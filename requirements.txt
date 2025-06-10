@@ -1,49 +1,18 @@
-# 核心依赖
-langchain>=0.1.0
-openai>=1.0.0
-anthropic>=0.20.0
-httpx>=0.25.0
-
-# Web框架
-fastapi>=0.104.0
-uvicorn>=0.24.0
-websockets>=12.0
-
-# 数据处理
-pandas>=2.0.0
+gradio>=4.0.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+httpx>=0.24.0
+asyncio
+pypdf>=3.0.0
+python-docx>=0.8.11
+markdown>=3.4.0
+edge-tts>=6.1.0
+matplotlib>=3.7.0
+Pillow>=10.0.0
 numpy>=1.24.0
-pydantic>=1.10.0,<3.0.0
-
-# 文档处理
-pypdf>=3.17.0
-python-docx>=1.0.0
-markdown>=3.5.0
-
-# 向量数据库
-pymilvus>=2.3.0
-qdrant-client>=1.7.0
-chromadb>=0.4.0
-
-# 数据库
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-redis>=5.0.0
-
-# 工具类
 python-dotenv>=1.0.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+websockets>=12.0
+pandas>=2.0.0
 pyyaml>=6.0
-click>=8.1.0
-rich>=13.0.0
-
-# 测试
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-
-# 开发工具
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.5.0
-
-# Configuration
-pydantic-settings>=2.0.0; python_version >= '3.8' 
