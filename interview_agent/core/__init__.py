@@ -2,16 +2,22 @@
 Interview Agent Core Modules
 """
 
-from .resume_parser import ResumeParser, CandidateProfile
+from .resume_parser import ResumeParser, ParsedDocument, UniversalDocumentParser
 from .question_generator import QuestionGenerator, InterviewQuestion, QuestionType, JobDescription
 from .interview_conductor import InterviewConductor, InterviewSession, InterviewState
-from .llm_client import WildcardLLMClient, llm_client
+from .llm_client import WildcardLLMClient, llm_client, Message
 from .vector_store import VectorStore, MilvusStore, QdrantStore, VectorStoreFactory, Document
+from .base_agent import (
+    BaseAgent, AgentContext, AgentStatus, AgentMessage, MessageType,
+    ChainAgent, ConditionalAgent, LoopAgent
+)
+from .audio_handler import AudioManager, AudioHandler
 
 __all__ = [
     # 简历解析
     "ResumeParser",
-    "CandidateProfile",
+    "ParsedDocument",
+    "UniversalDocumentParser",
     
     # 题目生成
     "QuestionGenerator", 
@@ -27,11 +33,26 @@ __all__ = [
     # LLM客户端
     "WildcardLLMClient",
     "llm_client",
+    "Message",
     
     # 向量存储
     "VectorStore",
     "MilvusStore",
     "QdrantStore",
     "VectorStoreFactory",
-    "Document"
+    "Document",
+    
+    # Agent基类
+    "BaseAgent",
+    "AgentContext",
+    "AgentStatus",
+    "AgentMessage",
+    "MessageType",
+    "ChainAgent",
+    "ConditionalAgent",
+    "LoopAgent",
+    
+    # 音频处理
+    "AudioManager",
+    "AudioHandler"
 ] 

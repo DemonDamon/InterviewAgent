@@ -19,6 +19,52 @@ from .llm_client import llm_client, Message
 
 
 @dataclass
+class CandidateProfile:
+    """候选人简历信息"""
+    name: str
+    experience_years: int = 0
+    skills: List[str] = field(default_factory=list)
+    education: List[str] = field(default_factory=list)
+    work_experience: List[str] = field(default_factory=list)
+    projects: List[str] = field(default_factory=list)
+    certifications: List[str] = field(default_factory=list)
+    contact_info: Dict[str, str] = field(default_factory=dict)
+    languages: List[str] = field(default_factory=list)
+    summary: str = ""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "name": self.name,
+            "experience_years": self.experience_years,
+            "skills": self.skills,
+            "education": self.education,
+            "work_experience": self.work_experience,
+            "projects": self.projects,
+            "certifications": self.certifications,
+            "contact_info": self.contact_info,
+            "languages": self.languages,
+            "summary": self.summary
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CandidateProfile':
+        """从字典创建实例"""
+        return cls(
+            name=data.get("name", ""),
+            experience_years=data.get("experience_years", 0),
+            skills=data.get("skills", []),
+            education=data.get("education", []),
+            work_experience=data.get("work_experience", []),
+            projects=data.get("projects", []),
+            certifications=data.get("certifications", []),
+            contact_info=data.get("contact_info", {}),
+            languages=data.get("languages", []),
+            summary=data.get("summary", "")
+        )
+
+
+@dataclass
 class ParsedDocument:
     """解析后的文档数据结构"""
     raw_text: str
@@ -411,6 +457,108 @@ class ResumeParser:
             "file_type": document.file_type,
             "structured_info": structured_info
         }
+    
+    def parse_to_profile(self,
+                       file_path: Union[str, Path],
+                       custom_schema: Optional[Dict[str, Any]] = None,
+                       additional_instructions: str = "") -> CandidateProfile:
+        """
+        解析简历文件并直接返回CandidateProfile对象
+        
+        Args:
+            file_path: 简历文件路径
+            custom_schema: 自定义抽取模式（可选）
+            additional_instructions: 额外的抽取指令（可选）
+            
+        Returns:
+            CandidateProfile对象
+        """
+        # 解析简历
+        result = self.parse(file_path, custom_schema, additional_instructions)
+        structured_info = result["structured_info"]
+        
+        # 提取基本信息
+        basic_info = structured_info.get("basic_info", {})
+        name = basic_info.get("name", "未知")
+        summary = basic_info.get("summary", "")
+        
+        # 提取技能
+        skills_info = structured_info.get("skills", {})
+        skills = []
+        skills.extend(skills_info.get("technical", []))
+        skills.extend(skills_info.get("tools", []))
+        
+        # 提取教育经历
+        education_list = structured_info.get("education", [])
+        education = []
+        for edu in education_list:
+            edu_str = f"{edu.get('school', '')} - {edu.get('degree', '')} {edu.get('major', '')}"
+            if edu.get('start_date') and edu.get('end_date'):
+                edu_str += f" ({edu.get('start_date')} - {edu.get('end_date')})"
+            education.append(edu_str)
+        
+        # 提取工作经历
+        work_list = structured_info.get("work_experience", [])
+        work_experience = []
+        experience_years = 0
+        for work in work_list:
+            work_str = f"{work.get('company', '')} - {work.get('position', '')}"
+            if work.get('start_date') and work.get('end_date'):
+                work_str += f" ({work.get('start_date')} - {work.get('end_date')})"
+                # 尝试计算工作年限
+                try:
+                    start_year = int(work.get('start_date', '').split('-')[0])
+                    end_year = int(work.get('end_date', '').split('-')[0])
+                    experience_years += (end_year - start_year)
+                except (ValueError, IndexError):
+                    pass
+            if work.get('description'):
+                work_str += f": {work.get('description')}"
+            work_experience.append(work_str)
+        
+        # 提取项目经历
+        project_list = structured_info.get("projects", [])
+        projects = []
+        for proj in project_list:
+            proj_str = f"{proj.get('name', '')} - {proj.get('role', '')}"
+            if proj.get('description'):
+                proj_str += f": {proj.get('description')}"
+            if proj.get('technologies'):
+                proj_str += f" [技术: {', '.join(proj.get('technologies', []))}]"
+            projects.append(proj_str)
+        
+        # 提取证书
+        cert_list = structured_info.get("certifications", [])
+        certifications = []
+        for cert in cert_list:
+            cert_str = f"{cert.get('name', '')} - {cert.get('issuer', '')}"
+            if cert.get('date'):
+                cert_str += f" ({cert.get('date')})"
+            certifications.append(cert_str)
+        
+        # 提取语言
+        languages = skills_info.get("languages", [])
+        
+        # 提取联系信息
+        contact_info = {
+            "email": basic_info.get("email", ""),
+            "phone": basic_info.get("phone", ""),
+            "location": basic_info.get("location", "")
+        }
+        
+        # 创建并返回CandidateProfile对象
+        return CandidateProfile(
+            name=name,
+            experience_years=experience_years,
+            skills=skills,
+            education=education,
+            work_experience=work_experience,
+            projects=projects,
+            certifications=certifications,
+            contact_info=contact_info,
+            languages=languages,
+            summary=summary
+        )
     
     def parse_batch(self, 
                    file_paths: List[Union[str, Path]],
