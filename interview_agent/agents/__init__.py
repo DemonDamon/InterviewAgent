@@ -1,15 +1,10 @@
 """
-Interview Agent - 具体Agent实现
+Agent模块初始化
 """
 
-from .parser_agent import ParserAgent
 from .planner_agent import PlannerAgent
+from .parser_agent import ParserAgent
 from .executor_agent import ExecutorAgent
 from .evaluator_agent import EvaluatorAgent
 
-__all__ = [
-    "ParserAgent",
-    "PlannerAgent", 
-    "ExecutorAgent",
-    "EvaluatorAgent",
-] 
+__all__ = ["PlannerAgent", "ParserAgent", "ExecutorAgent", "EvaluatorAgent"] 
