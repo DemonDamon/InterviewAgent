@@ -6,7 +6,6 @@ import json
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 import httpx
-from config.settings import settings
 
 
 @dataclass
@@ -29,12 +28,16 @@ class WildcardLLMClient:
     """Wildcard API统一客户端"""
     
     def __init__(self, 
-                 api_key: Optional[str] = None,
-                 api_base: Optional[str] = None,
-                 model: Optional[str] = None):
-        self.api_key = api_key or settings.wildcard_api_key
-        self.api_base = api_base or settings.wildcard_api_base
-        self.model = model or settings.llm_model
+                 api_key: str,
+                 api_base: str,
+                 model: str,
+                 temperature: float = 0.7,
+                 max_tokens: int = 2000):
+        self.api_key = api_key
+        self.api_base = api_base
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         
         if not self.api_key:
             raise ValueError("Wildcard API key not provided")
@@ -65,8 +68,8 @@ class WildcardLLMClient:
         payload = {
             "model": model or self.model,
             "messages": formatted_messages,
-            "temperature": temperature or settings.llm_temperature,
-            "max_tokens": max_tokens or settings.llm_max_tokens,
+            "temperature": temperature or self.temperature,
+            "max_tokens": max_tokens or self.max_tokens,
             "stream": stream,
             **kwargs
         }
@@ -150,7 +153,7 @@ class WildcardLLMClient:
             Message(role="user", content=user_prompt)
         ]
         
-        response = self.chat_completion(messages, temperature=0.7)
+        response = self.chat_completion(messages)
         return response.content
     
     def analyze_answer(self,
@@ -184,7 +187,7 @@ class WildcardLLMClient:
             Message(role="user", content=prompt)
         ]
         
-        response = self.chat_completion(messages, temperature=0.3)
+        response = self.chat_completion(messages)
         
         try:
             return json.loads(response.content)
@@ -228,7 +231,7 @@ class WildcardLLMClient:
             Message(role="user", content=prompt)
         ]
         
-        response = self.chat_completion(messages, temperature=0.5)
+        response = self.chat_completion(messages)
         return response.content.strip()
     
     def web_search(self, query: str) -> str:
@@ -243,5 +246,4 @@ class WildcardLLMClient:
         return response.content
 
 
-# 全局LLM客户端实例
-llm_client = WildcardLLMClient() 
+# 不再创建全局LLM客户端实例，由各个agent负责创建 

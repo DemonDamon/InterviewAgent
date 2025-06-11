@@ -1,21 +1,41 @@
 """
-简历解析模块 - 通用文档解析器，支持多种格式并使用LLM进行智能抽取
+简历解析模块 - 支持多种文件格式和信息抽取
 """
 
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, field
 import json
 import re
+from typing import List, Dict, Any, Optional, Union
+from pathlib import Path
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+import os
 
-# 文档处理相关
-import pypdf
-from docx import Document
-import markdown
+# 文档解析相关
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    import markdown
+    from bs4 import BeautifulSoup
+except ImportError:
+    markdown = None
+    BeautifulSoup = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
 
 # LLM相关
-from .llm_client import llm_client, Message
+from .llm_client import Message
+from config.settings import settings
 
 
 @dataclass
@@ -96,6 +116,9 @@ class PDFParser(DocumentParser):
     
     def parse(self, file_path: Path) -> ParsedDocument:
         """使用pypdf进行高级PDF解析"""
+        if pypdf is None:
+            raise ImportError("无法解析PDF文件: 缺少pypdf库。请使用'pip install pypdf'安装。")
+            
         text_content = []
         metadata = {}
         
@@ -263,8 +286,10 @@ class UniversalDocumentParser:
 class LLMExtractor:
     """基于LLM的信息抽取器"""
     
-    def __init__(self):
+    def __init__(self, llm_client=None):
         self.llm = llm_client
+        # 从settings获取max_tokens，如果未设置则使用默认值4000
+        self.max_tokens = getattr(settings, 'extractor_max_tokens', 4000)
     
     def extract_structured_info(self, 
                               document: ParsedDocument,
@@ -282,6 +307,9 @@ class LLMExtractor:
             抽取的结构化信息
         """
         
+        if not self.llm:
+            raise ValueError("LLM客户端未设置，请确保在使用前设置LLM客户端")
+            
         system_prompt = """你是一个专业的文档信息抽取助手。
 请根据提供的文档内容和抽取模式，准确地提取相关信息。
 
@@ -314,7 +342,7 @@ class LLMExtractor:
             response = self.llm.chat_completion(
                 messages,
                 temperature=0.1,  # 低温度以提高准确性
-                max_tokens=2000
+                max_tokens=self.max_tokens
             )
             
             # 尝试解析JSON响应

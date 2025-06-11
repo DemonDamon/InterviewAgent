@@ -5,7 +5,7 @@ Interview Agent Core Modules
 from .resume_parser import ResumeParser, ParsedDocument, UniversalDocumentParser
 from .question_generator import QuestionGenerator, InterviewQuestion, QuestionType, JobDescription
 from .interview_conductor import InterviewConductor, InterviewSession, InterviewState
-from .llm_client import WildcardLLMClient, llm_client, Message
+from .llm_client import WildcardLLMClient, Message
 from .vector_store import VectorStore, MilvusStore, QdrantStore, VectorStoreFactory, Document
 from .base_agent import (
     BaseAgent, AgentContext, AgentStatus, AgentMessage, MessageType,

@@ -10,7 +10,7 @@ import uuid
 
 from interview_agent.core.resume_parser import CandidateProfile
 from interview_agent.core.question_generator import InterviewQuestion, QuestionType
-from interview_agent.core.llm_client import llm_client
+from interview_agent.core.llm_client import WildcardLLMClient
 
 
 class InterviewState(Enum):
@@ -74,7 +74,13 @@ class InterviewSession:
 class InterviewConductor:
     """面试执行器"""
     
-    def __init__(self):
+    def __init__(self, llm_client=None):
+        """
+        初始化面试执行器
+        
+        Args:
+            llm_client: LLM客户端实例，如果为None则需要在使用前设置
+        """
         self.llm_client = llm_client
         self.sessions: Dict[str, InterviewSession] = {}
         self.prompts = self._load_prompts()
@@ -134,6 +140,9 @@ class InterviewConductor:
     
     def start_interview(self, session_id: str) -> str:
         """开始面试"""
+        if not self.llm_client:
+            raise ValueError("LLM客户端未设置，请确保在使用前设置LLM客户端")
+            
         session = self.sessions.get(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
@@ -159,6 +168,9 @@ class InterviewConductor:
                                  session_id: str, 
                                  response: str) -> Tuple[str, bool]:
         """处理候选人回答"""
+        if not self.llm_client:
+            raise ValueError("LLM客户端未设置，请确保在使用前设置LLM客户端")
+            
         session = self.sessions.get(session_id)
         if not session or session.state != InterviewState.IN_PROGRESS:
             raise ValueError(f"Invalid session state")
