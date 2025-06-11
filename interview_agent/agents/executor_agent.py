@@ -10,8 +10,9 @@ from enum import Enum
 import json
 
 from ..core.base_agent import BaseAgent, AgentContext, MessageType, AgentMessage
-from ..core.llm_client import llm_client, Message
+from ..core.llm_client import WildcardLLMClient, Message
 from ..core.audio_handler import AudioManager
+from config.settings import settings
 
 
 class InterviewState(Enum):
@@ -25,18 +26,11 @@ class InterviewState(Enum):
 
 
 class ConversationTurn:
-    """对话回合"""
-    def __init__(self, speaker: str, content: str, timestamp: datetime = None):
+    """面试对话轮次"""
+    def __init__(self, speaker: str, content: str, timestamp: str):
         self.speaker = speaker
         self.content = content
-        self.timestamp = timestamp or datetime.now()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "speaker": self.speaker,
-            "content": self.content,
-            "timestamp": self.timestamp.isoformat()
-        }
+        self.timestamp = timestamp
 
 
 class ExecutorAgent(BaseAgent):
@@ -48,7 +42,13 @@ class ExecutorAgent(BaseAgent):
                  enable_voice: bool = True,
                  **kwargs):
         super().__init__(name, description="执行面试流程", **kwargs)
-        self.llm = llm_client
+        self.llm = WildcardLLMClient(
+            api_key=settings.wildcard_api_key,
+            api_base=settings.wildcard_api_base,
+            model=settings.llm_model,
+            temperature=settings.executor_temperature,
+            max_tokens=settings.executor_max_tokens
+        )
         self.enable_voice = enable_voice
         
         # 初始化音频处理
@@ -240,7 +240,7 @@ class ExecutorAgent(BaseAgent):
     
     async def _interviewer_speak(self, text: str):
         """面试官说话"""
-        self.conversation_history.append(ConversationTurn("面试官", text))
+        self.conversation_history.append(ConversationTurn("面试官", text, datetime.now().isoformat()))
         
         if self.enable_voice and self.audio_manager:
             await self.audio_manager.speak(text, voice="professional")
@@ -256,7 +256,7 @@ class ExecutorAgent(BaseAgent):
             # 文本输入（模拟）
             response = await self._get_text_input()
         
-        self.conversation_history.append(ConversationTurn("候选人", response))
+        self.conversation_history.append(ConversationTurn("候选人", response, datetime.now().isoformat()))
         await self._notify_conversation_update()
         
         return response
@@ -297,7 +297,7 @@ class ExecutorAgent(BaseAgent):
             Message(role="user", content=prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.7)
+        response = self.llm.chat_completion(messages)
         
         # 执行追问
         await self._interviewer_speak(response.content)
@@ -316,7 +316,7 @@ class ExecutorAgent(BaseAgent):
             Message(role="user", content=prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.8)
+        response = self.llm.chat_completion(messages)
         return response.content
     
     async def _analyze_answer(self, question: Dict[str, Any], answer: str) -> bool:
@@ -338,7 +338,7 @@ class ExecutorAgent(BaseAgent):
             Message(role="user", content=prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.3)
+        response = self.llm.chat_completion(messages)
         return "yes" in response.content.lower()
     
     async def _select_followup(self, 
@@ -360,7 +360,7 @@ class ExecutorAgent(BaseAgent):
             Message(role="user", content=prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.7)
+        response = self.llm.chat_completion(messages)
         return response.content
     
     async def _generate_answer_to_candidate(self, questions: str) -> str:
@@ -382,7 +382,7 @@ class ExecutorAgent(BaseAgent):
             Message(role="user", content=prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.7)
+        response = self.llm.chat_completion(messages)
         return response.content
     
     def _get_recent_conversation(self, n: int) -> str:
@@ -420,7 +420,7 @@ class ExecutorAgent(BaseAgent):
                 md_lines.append(f"\n### {current_section}\n")
             
             # 记录对话
-            time_str = turn.timestamp.strftime("%H:%M:%S")
+            time_str = turn.timestamp.split("T")[1].split(".")[0]
             md_lines.append(f"**[{time_str}] {turn.speaker}**：{turn.content}\n")
         
         # 统计信息
@@ -430,7 +430,7 @@ class ExecutorAgent(BaseAgent):
         md_lines.append(f"- 面试官发言：{sum(1 for t in self.conversation_history if t.speaker == '面试官')}次")
         md_lines.append(f"- 候选人发言：{sum(1 for t in self.conversation_history if t.speaker == '候选人')}次")
         
-        total_duration = (self.conversation_history[-1].timestamp - self.conversation_history[0].timestamp).total_seconds() / 60 if len(self.conversation_history) > 1 else 0
+        total_duration = (datetime.fromisoformat(self.conversation_history[-1].timestamp) - datetime.fromisoformat(self.conversation_history[0].timestamp)).total_seconds() / 60 if len(self.conversation_history) > 1 else 0
         md_lines.append(f"- 总时长：{total_duration:.1f}分钟\n")
         
         return "\n".join(md_lines)
