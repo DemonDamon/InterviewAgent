@@ -76,7 +76,16 @@ BaseAgent（基类）
 - **base_agent.py**: 通用Agent基类，支持工作流编排
 - **audio_handler.py**: TTS/STT音频处理
 - **llm_client.py**: 统一的LLM调用接口
-- **resume_parser.py**: 文档解析器
+- **resume_parser.py**: 文档解析器，支持多种格式提取
+
+## 📸 系统截图
+
+### 面试背景信息与摘要生成
+![面试背景信息与摘要生成](/assets/screenshot_1.png)
+
+### 面试流程规划生成
+![面试流程规划生成](/assets/screenshot_2.png)
+
 
 ## 📖 使用指南
 
@@ -121,6 +130,13 @@ class CustomAgent(BaseAgent):
         # 实现自定义逻辑
         pass
 ```
+
+## 🔄 最近更新
+
+- ✅ 增强了PlannerAgent的JSON解析能力，提升面试规划的稳定性
+- ✅ 优化了简历解析模块的token限制配置，从硬编码改为可配置
+- ✅ 添加了详细的错误处理和日志记录，便于调试
+- ✅ 完善了数据验证逻辑，确保面试计划数据的完整性
 
 ## 📋 待办事项
 
