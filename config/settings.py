@@ -24,11 +24,24 @@ class Settings(BaseSettings):
     wildcard_api_key: str = Field("", env="WILDCARD_API_KEY")
     wildcard_api_base: str = Field("https://api.gptsapi.net", env="WILDCARD_API_BASE")
     
-    # LLM配置
+    # LLM通用配置
     llm_provider: str = Field("wildcard", env="LLM_PROVIDER")  # wildcard, openai, anthropic
     llm_model: str = Field("claude-3-5-sonnet-20241022", env="LLM_MODEL")
     llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(2000, env="LLM_MAX_TOKENS")
+    
+    # 各Agent的LLM参数配置
+    planner_temperature: float = Field(0.7, env="PLANNER_TEMPERATURE")
+    planner_max_tokens: int = Field(3000, env="PLANNER_MAX_TOKENS")
+    
+    parser_temperature: float = Field(0.1, env="PARSER_TEMPERATURE")
+    parser_max_tokens: int = Field(2000, env="PARSER_MAX_TOKENS")
+    
+    evaluator_temperature: float = Field(0.3, env="EVALUATOR_TEMPERATURE")
+    evaluator_max_tokens: int = Field(2000, env="EVALUATOR_MAX_TOKENS")
+    
+    executor_temperature: float = Field(0.7, env="EXECUTOR_TEMPERATURE")
+    executor_max_tokens: int = Field(2000, env="EXECUTOR_MAX_TOKENS")
     
     # 数据库配置
     database_url: str = Field(
@@ -57,6 +70,9 @@ class Settings(BaseSettings):
     default_interview_duration: int = Field(30, env="DEFAULT_INTERVIEW_DURATION")
     max_questions_per_interview: int = Field(10, env="MAX_QUESTIONS_PER_INTERVIEW")
     
+    # 简历处理配置
+    resume_max_length: int = Field(16000, env="RESUME_MAX_LENGTH")
+    
     # 文件存储
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")
     max_file_size: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB
@@ -78,11 +94,21 @@ EXAMPLE_ENV_CONTENT = """
 WILDCARD_API_KEY=sk-vwR14fbdd9364638da79456d0c24ddcba432d1aa2172RMzu
 WILDCARD_API_BASE=https://api.gptsapi.net
 
-# LLM Configuration
+# LLM通用配置
 LLM_PROVIDER=wildcard
-LLM_MODEL=claude-3-5-sonnet-20241022
+LLM_MODEL=gpt-4o
 LLM_TEMPERATURE=0.7
-LLM_MAX_TOKENS=2000
+LLM_MAX_TOKENS=16000
+
+# Agent特定LLM参数
+PLANNER_TEMPERATURE=0.7
+PLANNER_MAX_TOKENS=3000
+PARSER_TEMPERATURE=0.1
+PARSER_MAX_TOKENS=2000
+EVALUATOR_TEMPERATURE=0.3
+EVALUATOR_MAX_TOKENS=2000
+EXECUTOR_TEMPERATURE=0.7
+EXECUTOR_MAX_TOKENS=2000
 
 # Database
 DATABASE_URL=postgresql://user:password@localhost/interview_db
@@ -93,18 +119,26 @@ VECTOR_DB_TYPE=milvus
 MILVUS_HOST=localhost
 MILVUS_PORT=19530
 MILVUS_COLLECTION=interview_questions
-
-# Qdrant (optional)
 QDRANT_URL=http://localhost:6333
 
-# Application
-DEBUG=false
+# 面试配置
 DEFAULT_INTERVIEW_DURATION=30
 MAX_QUESTIONS_PER_INTERVIEW=10
+RESUME_MAX_LENGTH=16000
 
-# File Storage
+# 音频配置
+TTS_BACKEND=edge
+STT_BACKEND=openai
+
+# 文件存储
 UPLOAD_DIR=./uploads
+REPORT_DIR=./reports
 MAX_FILE_SIZE=10485760
+
+# 应用配置
+DEBUG=false
+PORT=7860
+LOG_LEVEL=INFO
 """
 
 
