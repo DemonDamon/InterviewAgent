@@ -14,7 +14,8 @@ import io
 import base64
 
 from ..core.base_agent import BaseAgent, AgentContext, MessageType
-from ..core.llm_client import llm_client, Message
+from ..core.llm_client import WildcardLLMClient, Message
+from config.settings import settings
 
 
 class InterviewEvaluation:
@@ -57,7 +58,13 @@ class EvaluatorAgent(BaseAgent):
     
     def __init__(self, name: str = "EvaluatorAgent", **kwargs):
         super().__init__(name, description="评估面试表现并生成报告", **kwargs)
-        self.llm = llm_client
+        self.llm = WildcardLLMClient(
+            api_key=settings.wildcard_api_key,
+            api_base=settings.wildcard_api_base,
+            model=settings.llm_model,
+            temperature=settings.evaluator_temperature,
+            max_tokens=settings.evaluator_max_tokens
+        )
         
         # 设置中文字体
         self.setup_chinese_font()
@@ -177,7 +184,7 @@ class EvaluatorAgent(BaseAgent):
             Message(role="user", content=evaluation_prompt)
         ]
         
-        response = self.llm.chat_completion(messages, temperature=0.3, max_tokens=2000)
+        response = self.llm.chat_completion(messages)
         
         # 解析评估结果
         evaluation = InterviewEvaluation()
