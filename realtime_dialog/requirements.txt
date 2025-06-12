@@ -1,0 +1,4 @@
+pyaudio
+websockets
+dataclasses==0.8; python_version < "3.7"
+typing-extensions==4.7.1; python_version < "3.8"
