@@ -103,7 +103,16 @@ class InterviewPlan:
                 if q.get('follow_up_questions'):
                     md_lines.append("- **追问方向**：")
                     for fu in q['follow_up_questions']:
-                        md_lines.append(f"  - {fu}")
+                        if isinstance(fu, dict):
+                            # 处理字典格式的追问
+                            question = fu.get('question', 'N/A')
+                            key_points = fu.get('key_points', [])
+                            md_lines.append(f"  - **问题**：{question}")
+                            if key_points:
+                                md_lines.append(f"    - **参考答案要点**：{', '.join(key_points)}")
+                        else:
+                            # 处理字符串格式的追问
+                            md_lines.append(f"  - {fu}")
             md_lines.append("")
         
         # 面试结束

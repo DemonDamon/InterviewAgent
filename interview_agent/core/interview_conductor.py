@@ -194,13 +194,20 @@ class InterviewConductor:
         
         elif analysis.get("follow_up_needed") and current_question.follow_up_questions:
             # 使用LLM生成追问
-            follow_up = self.llm_client.generate_follow_up(
+            follow_up_data = self.llm_client.generate_follow_up(
                 question=current_question.question,
                 answer=response,
                 context="技术面试"
             )
-            follow_up_msg = self.prompts["follow_up"].format(follow_up_question=follow_up)
-            session.add_message(MessageRole.INTERVIEWER, follow_up_msg)
+            follow_up_question = follow_up_data.get("follow_up_question", "关于这一点，您能再详细说明一下吗？")
+            key_points = follow_up_data.get("key_points", [])
+
+            follow_up_msg = self.prompts["follow_up"].format(follow_up_question=follow_up_question)
+            session.add_message(
+                MessageRole.INTERVIEWER, 
+                follow_up_msg, 
+                metadata={"key_points": key_points}
+            )
             return follow_up_msg, False
         
         else:

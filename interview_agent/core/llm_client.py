@@ -205,10 +205,10 @@ class WildcardLLMClient:
     def generate_follow_up(self,
                          question: str,
                          answer: str,
-                         context: str) -> str:
-        """生成追问问题"""
+                         context: str) -> Dict:
+        """生成追问问题和回答要点"""
         
-        prompt = f"""基于候选人的回答，生成一个合适的追问问题：
+        prompt = f"""基于候选人的回答，生成一个合适的追问问题和对应的回答要点：
 
 【原问题】
 {question}
@@ -224,15 +224,29 @@ class WildcardLLMClient:
 2. 探索更深层次的理解
 3. 或者澄清不明确的部分
 
-只返回追问问题本身，不需要其他说明。"""
+请以JSON格式返回，包含 "follow_up_question" 和 "key_points" 两个字段。
+例如:
+{{
+    "follow_up_question": "你的项目中具体是如何处理数据一致性问题的？",
+    "key_points": ["分布式锁", "最终一致性方案", "CAP理论权衡"]
+}}
+"""
 
         messages = [
-            Message(role="system", content="你是一位经验丰富的面试官。"),
+            Message(role="system", content="你是一位经验丰富的面试官，擅长进行深度追问。"),
             Message(role="user", content=prompt)
         ]
         
         response = self.chat_completion(messages)
-        return response.content.strip()
+        
+        try:
+            return json.loads(response.content)
+        except json.JSONDecodeError:
+            # 如果JSON解析失败，返回基础分析
+            return {
+                "follow_up_question": response.content.strip(),
+                "key_points": ["模型未返回JSON，这是原始输出"]
+            }
     
     def web_search(self, query: str) -> str:
         """联网搜索功能（如果API支持）"""
