@@ -228,33 +228,51 @@ class IntegratedVoiceSession:
             return False
     
     async def stop(self):
-        """停止语音会话"""
+        """停止语音会话，此方法为非阻塞设计，会立即返回"""
         try:
-            self.logger.info("停止集成语音会话")
+            self.logger.info("开始执行非阻塞式停止语音会话流程...")
             
-            # 停止录音和播放
+            # 1. 立即设置状态标志，通知所有内部循环线程停止
             self.is_running = False
             self.is_recording = False
             self.is_playing = False
             
-            # 等待线程结束
-            if self.player_thread and self.player_thread.is_alive():
-                self.player_thread.join(timeout=2.0)
-            
-            if self.recorder_thread and self.recorder_thread.is_alive():
-                self.recorder_thread.join(timeout=2.0)
-            
-            # 结束语音会话
-            await self.voice_client.finish_session()
-            await self.voice_client.disconnect()
-            
-            # 清理音频设备
-            self.audio_device.cleanup()
-            
-            self.logger.info("集成语音会话已停止")
+            # 2. 优先、异步地关闭网络连接
+            try:
+                if self.voice_client and self.voice_client.is_connected:
+                    self.logger.info("正在异步断开WebSocket连接...")
+                    # 创建一个任务来执行断开，不直接等待
+                    asyncio.create_task(self.voice_client.disconnect())
+                    self.logger.info("WebSocket断开任务已提交")
+            except Exception as e:
+                self.logger.error(f"提交WebSocket断开任务时出错: {e}", exc_info=True)
+                
+            # 3. 将所有阻塞的清理操作提交到后台线程执行，且不等待其完成
+            def _blocking_cleanup_task():
+                """包含所有阻塞操作的清理函数"""
+                self.logger.info("后台清理线程：开始执行...")
+                try:
+                    # 清理PyAudio设备资源，这是一个阻塞操作
+                    self.audio_device.cleanup()
+                    self.logger.info("后台清理线程：音频设备已成功清理。")
+                except Exception as e:
+                    self.logger.error(f"后台清理线程：清理音频设备时出错: {e}", exc_info=True)
+                self.logger.info("后台清理线程：任务执行完毕。")
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, _blocking_cleanup_task)
+                self.logger.info("阻塞的设备清理任务已成功提交到后台线程。")
+            except RuntimeError:
+                self.logger.warning("无法获取事件循环，将在当前线程同步执行清理任务...")
+                _blocking_cleanup_task()
+
+            self.logger.info("非阻塞式停止流程已完成，函数将立即返回。")
+            return True
             
         except Exception as e:
-            self.logger.error(f"停止语音会话失败: {e}")
+            self.logger.error(f"执行停止语音会话流程时发生严重错误: {e}", exc_info=True)
+            return False
     
     async def send_text_for_speech(self, text: str):
         """发送文本进行语音合成"""

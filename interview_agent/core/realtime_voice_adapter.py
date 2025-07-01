@@ -48,42 +48,89 @@ class RealtimeVoiceAdapter:
             self.logger.info("启动实时语音适配器")
             self.is_running = True
             
-            # 初始化对话会话
-            greeting = await self.dialog_manager.initialize_session()
+            # 初始化本地对话状态，但不依赖其生成的开场白
+            await self.dialog_manager.initialize_session()
+
+            # 在建立连接前，构建包含面试计划的动态配置
+            dynamic_session_config = None
+            if hasattr(self.dialog_manager, 'interview_plan') and self.dialog_manager.interview_plan:
+                plan = self.dialog_manager.interview_plan
+                
+                # 创建一个只包含核心信息的、精简版的面试规划，以减小初始上下文长度
+                summary_plan = {
+                    "candidate_name": plan.get("candidate_info", {}).get("name", "候选人"),
+                    "position": plan.get("candidate_info", {}).get("position", "所申请岗位"),
+                    "sections": [
+                        {
+                            "name": section.get("name"),
+                            "questions": [q.get("question") for q in section.get("questions", [])]
+                        } for section in plan.get("sections", [])
+                    ]
+                }
+                plan_text = json.dumps(summary_plan, ensure_ascii=False, indent=2)
+                
+                # 使用 "history" 字段传递结构化上下文，以建立真正的对话式Session
+                dynamic_session_config = {
+                    "dialog": {
+                        "history": [
+                            {
+                                "role": "system",
+                                "content": "你是一名专业的、顶级的AI技术面试官。你的语气应该专业、友善、且有条理。严格按照用户提供的JSON计划进行面试。"
+                            },
+                            {
+                                "role": "user",
+                                "content": f"你好，请严格按照我提供的JSON格式面试计划摘要来主持这场技术面试。请首先做一个自然的开场白，然后直接提出第一个问题。这是计划摘要：\n\n```json\n{plan_text}\n```"
+                            }
+                        ]
+                    }
+                }
+                self.logger.info("已构建包含精简面试计划的 'history' 配置，将在建立会话时使用。")
+            else:
+                self.logger.warning("在 dialog_manager 中未找到面试计划，将使用默认配置启动语音会话。")
             
-            # 启动WebSocket连接
-            await self._connect_websocket()
-            
-            # 发送开场白
-            # 暂时禁用send_text，因为可能触发recreate session错误
-            # TODO: 需要确认正确的TTS协议
-            # await self._send_text_to_speech(greeting)
-            self.logger.info(f"面试官开场白: {greeting}")
+            # 启动WebSocket连接，并传入包含面试计划的配置
+            await self._connect_websocket(dynamic_session_config)
             
             # 启动音频处理循环
             await self._start_audio_processing_loop()
             
         except Exception as e:
-            self.logger.error(f"启动适配器失败: {e}")
+            self.logger.error(f"启动适配器失败: {e}", exc_info=True)
             raise
-    
+
     async def stop(self):
         """停止实时语音适配器"""
         self.logger.info("停止实时语音适配器")
         self.is_running = False
         
-        await self.voice_bridge.stop()
-        self.is_connected = False
+        try:
+            # 先标记状态变更，确保其他组件不再尝试使用
+            self.is_connected = False
+            
+            # 停止语音桥接器
+            if self.voice_bridge:
+                try:
+                    self.logger.info("正在停止语音桥接器...")
+                    await self.voice_bridge.stop()
+                    self.logger.info("语音桥接器已停止")
+                except Exception as e:
+                    self.logger.error(f"停止语音桥接器失败: {e}", exc_info=True)
+            
+            self.logger.info("实时语音适配器已停止")
+            return True
+        except Exception as e:
+            self.logger.error(f"停止实时语音适配器失败: {e}", exc_info=True)
+            return False
     
     async def add_supervisor_instruction(self, instruction: str):
         """添加监督员指令"""
         await self.dialog_manager.add_supervisor_instruction(instruction)
     
-    async def _connect_websocket(self):
+    async def _connect_websocket(self, dynamic_session_config: Optional[Dict] = None):
         """连接语音服务"""
         try:
             self.logger.info("连接到实时语音服务")
-            success = await self.voice_bridge.start()
+            success = await self.voice_bridge.start(dynamic_session_config)
             
             if success:
                 self.is_connected = True
@@ -121,17 +168,19 @@ class RealtimeVoiceAdapter:
             if text and text.strip():
                 self.logger.info(f"识别到语音: {text}")
                 
-                # 发送给对话管理器处理
+                # 调用本地对话管理器处理候选人输入，以更新我们的内部状态和对话历史。
+                # 但它的返回值（面试官的回应）将不再被发送。
                 response = await self.dialog_manager.process_candidate_input(text)
                 
-                # 将回应转换为语音
-                # 暂时禁用send_text，因为可能触发recreate session错误
-                # TODO: 需要确认正确的TTS协议
+                # 【关键修复】: 在对话式会话中，我们不应主动发送文本进行TTS。
+                # 服务器会根据其内部LLM的判断自动生成并发送语音。
+                # 主动发送文本会破坏会话状态，导致连接被关闭。
                 # await self._send_text_to_speech(response)
-                self.logger.info(f"面试官回复: {response}")
+                
+                self.logger.info(f"本地对话管理器生成的回复（仅用于记录，不发送）: {response}")
                 
         except Exception as e:
-            self.logger.error(f"处理语音文本失败: {e}")
+            self.logger.error(f"处理语音文本失败: {e}", exc_info=True)
     
     def _on_voice_audio_received(self, audio_data: bytes):
         """收到语音音频的回调"""
@@ -217,16 +266,33 @@ class VoiceInterviewSession:
     async def stop_interview(self) -> Dict:
         """停止语音面试"""
         try:
-            await self.voice_adapter.stop()
+            self.logger.info("开始停止语音面试...")
+            stop_result = await self.voice_adapter.stop()
             
-            return {
-                "status": "success",
-                "message": "语音面试已停止",
-                "summary": self.voice_adapter.get_dialog_summary()
-            }
+            if stop_result:
+                self.logger.info("语音面试已成功停止")
+                return {
+                    "status": "success",
+                    "message": "语音面试已停止",
+                    "summary": self.voice_adapter.get_dialog_summary()
+                }
+            else:
+                self.logger.warning("语音面试停止过程中出现问题，但已尽可能清理资源")
+                return {
+                    "status": "partial_success",
+                    "message": "语音面试已停止，但过程中出现问题",
+                    "summary": self.voice_adapter.get_dialog_summary()
+                }
             
         except Exception as e:
-            self.logger.error(f"停止语音面试失败: {e}")
+            self.logger.error(f"停止语音面试失败: {e}", exc_info=True)
+            # 尝试强制停止适配器
+            try:
+                self.voice_adapter.is_running = False
+                self.voice_adapter.is_connected = False
+            except:
+                pass
+                
             return {
                 "status": "error",
                 "message": f"停止失败: {str(e)}"

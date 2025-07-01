@@ -8,6 +8,10 @@ import logging
 from typing import Dict, Any, Optional, Callable
 import websockets
 import websockets.exceptions
+import json
+import threading
+import traceback
+from websockets.exceptions import ConnectionClosed
 
 from .voice_protocol import VoiceProtocolHandler, VoiceMessage
 
@@ -31,6 +35,8 @@ class VoiceServiceClient:
         # 连接状态
         self.is_connected = False
         self.is_session_started = False
+        self._stop_sending_event = threading.Event()
+        self._send_thread = None
     
     async def connect(self) -> bool:
         """建立WebSocket连接"""
@@ -176,57 +182,51 @@ class VoiceServiceClient:
         except Exception as e:
             self.logger.error(f"结束会话失败: {e}")
     
-    async def disconnect(self):
-        """断开连接"""
+    async def _cleanup_connection(self):
+        """Helper to perform the actual network cleanup in the background."""
+        self.logger.info("开始后台清理 WebSocket 连接...")
+
+        # Stop sending audio thread
+        if self._send_thread and self._send_thread.is_alive():
+            self._stop_sending_event.set()
+            # We don't join the thread here to avoid blocking the event loop.
+            # The thread will check the event and exit gracefully.
+            self.logger.info("已发送停止信号给音频发送线程。")
+
         try:
-            # 先标记状态
-            self.is_session_started = False
-            
-            if self.is_connected and self.ws:
-                self.logger.info("断开语音服务连接")
-                
-                try:
-                    # 只有在WebSocket连接正常时才发送断开请求
-                    # 检查连接是否打开（兼容不同版本的websockets）
-                    if hasattr(self.ws, 'state') and hasattr(self.ws.state, 'name'):
-                        is_open = self.ws.state.name == 'OPEN'
-                    elif hasattr(self.ws, 'open'):
-                        is_open = self.ws.open
-                    else:
-                        # 默认尝试发送
-                        is_open = True
-                    
-                    if is_open:
-                        # 发送断开连接请求
-                        request = VoiceProtocolHandler.create_finish_connection_request()
-                        await self.ws.send(request)
-                        
-                        # 接收响应（设置短超时）
-                        try:
-                            response = await asyncio.wait_for(self.ws.recv(), timeout=1.0)
-                            message = VoiceProtocolHandler.parse_response(response)
-                            self.logger.info(f"断开连接响应: {message.payload_msg}")
-                        except asyncio.TimeoutError:
-                            self.logger.debug("断开连接响应超时（正常情况）")
-                        except websockets.exceptions.ConnectionClosed:
-                            self.logger.debug("连接已关闭")
-                except Exception as e:
-                    self.logger.debug(f"发送断开请求时出错（可忽略）: {e}")
-                
-                # 关闭WebSocket
-                try:
-                    await self.ws.close()
-                except Exception as e:
-                    self.logger.debug(f"关闭WebSocket时出错（可忽略）: {e}")
-                
+            if self.ws and self.ws.open:
+                self.logger.info("正在发送 Stop 帧并关闭 WebSocket...")
+                # The "Stop" message is a Doubao-specific requirement.
+                await self.ws.send(json.dumps({"type": "Stop"}))
+                # Close the connection gracefully.
+                await self.ws.close(code=1000)
+                self.logger.info("WebSocket 后台关闭任务完成。")
+        except ConnectionClosed:
+            self.logger.warning("后台关闭 WebSocket 时连接已经关闭。")
         except Exception as e:
-            self.logger.error(f"断开连接失败: {e}")
+            self.logger.error(f"后台关闭 WebSocket 时出错: {e}", exc_info=True)
         finally:
-            # 确保状态被重置
-            self.is_connected = False
-            self.is_session_started = False
             self.ws = None
-            self.logger.info("连接已断开")
+            self.logger.info("后台清理任务结束。")
+
+
+    async def disconnect(self):
+        """立即断开连接（非阻塞），将耗时的清理工作放到后台任务。"""
+        if not self.is_connected:
+            self.logger.info("请求断开连接，但连接已断开。")
+            return
+        
+        self.logger.info("请求断开连接，将立即返回并后台执行清理。")
+        self.is_connected = False  # Prevent new operations immediately
+        
+        # Signal the sending thread to stop immediately.
+        self._stop_sending_event.set()
+
+        # Create a background task to do the actual slow network cleanup.
+        # This allows the UI to be responsive immediately.
+        asyncio.create_task(self._cleanup_connection())
+
+        self.logger.info("断开连接请求已处理，UI 应立即响应。")
     
     async def _send_connection_request(self):
         """发送连接请求"""

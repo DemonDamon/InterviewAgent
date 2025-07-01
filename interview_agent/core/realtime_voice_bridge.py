@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from typing import Dict, Optional, Callable
 import logging
+import json
 
 from .voice_audio_manager import IntegratedVoiceSession
 from config.settings import settings
@@ -57,15 +58,26 @@ class RealtimeVoiceBridge:
             }
         }
     
-    async def start(self) -> bool:
-        """启动语音桥接器"""
+    async def start(self, dynamic_session_config: Optional[Dict] = None) -> bool:
+        """启动语音桥接器，支持传入动态配置"""
         try:
             self.logger.info("启动实时语音桥接器")
-            
+
+            # 合并动静态会话配置
+            final_session_config = self.session_config.copy()
+            if dynamic_session_config:
+                # 深度合并 dialog 字典，这是传递 history 的关键
+                if 'dialog' in dynamic_session_config and 'dialog' in final_session_config:
+                    final_session_config['dialog'].update(dynamic_session_config.pop('dialog'))
+                # 合并其他顶层键
+                final_session_config.update(dynamic_session_config)
+
+            self.logger.info(f"最终会话配置: {json.dumps(final_session_config, ensure_ascii=False, indent=2)}")
+
             # 创建语音会话
             self.voice_session = IntegratedVoiceSession(
                 voice_config=self.voice_config,
-                session_config=self.session_config,
+                session_config=final_session_config,
                 on_text_received=self._on_text_received,
                 on_audio_received=self._on_audio_received
             )
@@ -83,22 +95,34 @@ class RealtimeVoiceBridge:
                 return False
                 
         except Exception as e:
-            self.logger.error(f"启动语音桥接器失败: {e}")
+            self.logger.error(f"启动语音桥接器失败: {e}", exc_info=True)
             return False
     
     async def stop(self):
         """停止语音桥接器"""
         try:
+            self.logger.info("开始停止语音桥接器...")
             self.is_running = False
             
             if self.voice_session:
-                await self.voice_session.stop()
+                try:
+                    self.logger.info("正在停止语音会话...")
+                    await self.voice_session.stop()
+                    self.logger.info("语音会话已停止")
+                except Exception as e:
+                    self.logger.error(f"停止语音会话失败: {e}", exc_info=True)
+                    # 继续执行，确保状态被重置
                 
             self.is_connected = False
             self.logger.info("语音桥接器已停止")
+            return True
             
         except Exception as e:
-            self.logger.error(f"停止语音桥接器失败: {e}")
+            self.logger.error(f"停止语音桥接器失败: {e}", exc_info=True)
+            # 确保状态被重置
+            self.is_running = False
+            self.is_connected = False
+            return False
     
     async def send_text(self, text: str):
         """发送文本进行语音合成"""

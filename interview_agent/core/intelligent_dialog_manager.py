@@ -71,6 +71,9 @@ class IntelligentDialogManager:
         self.conductor = InterviewConductor(llm_client)
         self.session: Optional[InterviewSession] = None
         
+        # 确保持久化面试计划
+        self.interview_plan = interview_plan
+        
     def set_callbacks(self, 
                      on_state_change: Callable = None,
                      on_audio_output: Callable = None,
@@ -230,46 +233,49 @@ class IntelligentDialogManager:
         return "谢谢您的回答，让我们继续。"
     
     async def _generate_greeting(self) -> str:
-        """生成开场白"""
-        # 调试：打印完整的面试计划
-        self.logger.info(f"面试计划内容: {json.dumps(self.interview_plan, ensure_ascii=False, indent=2)}")
+        """生成开场白及第一个问题，将面试计划作为核心指令"""
+        self.logger.info("基于面试计划生成开场白和第一个问题...")
         
-        candidate_info = self.interview_plan.get("candidate_info", {})
-        warmup = self.interview_plan.get("warmup", {})
+        # 将面试计划转换为格式化的字符串，作为核心指令
+        plan_str = json.dumps(self.interview_plan, ensure_ascii=False, indent=2)
+
+        system_prompt = f"""
+你是一名专业的AI面试官。你的任务是严格按照以下的JSON格式面试计划来主持一场技术面试。
+
+你的职责：
+1. **开场**: 首先，你需要根据计划中的候选人信息，生成一段自然、友好的开场白，介绍你自己和面试流程。
+2. **提问**: 开场白结束后，直接提出计划中第一个环节的第一个问题。
+3. **严格遵循计划**: 整场面试都需要围绕这个计划展开。
+
+**面试计划详情如下:**
+```json
+{plan_str}
+```
+
+现在，请生成你的开场白，并在结尾处直接提出第一个问题。
+"""
         
-        # 获取候选人姓名
-        candidate_name = candidate_info.get('name', self.candidate_name)
-        position = candidate_info.get('position', '算法工程师')
-        experience_years = candidate_info.get('experience_years', '未知')
+        messages = [
+            Message(role="system", content=system_prompt),
+            Message(role="user", content="你好，请开始面试吧。") # 模拟一个触发信号
+        ]
         
-        # 获取开场步骤
-        warmup_steps = warmup.get('steps', [])
-        
-        # 如果有开场步骤，使用第一个步骤作为基础
-        if warmup_steps and isinstance(warmup_steps, list) and len(warmup_steps) > 0:
-            first_step = warmup_steps[0]
-            if isinstance(first_step, str) and "面试官" in first_step:
-                # 使用预定义的开场白
-                greeting = first_step
-            else:
-                # 基于信息生成开场白
-                greeting = f"你好{candidate_name}，我是今天的面试官，负责{position}岗位的技术面试环节。"
-        else:
-            # 使用默认开场白
-            greeting = f"你好{candidate_name}，欢迎参加今天的面试。我是你的面试官。"
-        
-        # 添加面试流程介绍
-        sections = self.interview_plan.get("sections", [])
-        if sections:
-            section_names = [s.get('name', '') for s in sections[:3]]  # 只提前3个主要环节
-            if section_names:
-                greeting += f"\n\n今天的面试主要包括以下环节：{', '.join(section_names)}等。"
-        
-        greeting += "\n\n首先，请你做一个简单的自我介绍，包括你的教育背景、工作经验和主要技能。"
-        
-        self.logger.info(f"生成的开场白: {greeting}")
-        
-        return greeting
+        try:
+            response = self.llm_client.chat_completion(messages)
+            # LLM会返回包含开场白和第一个问题的完整文本
+            initial_response = response.content
+            
+            self.logger.info(f"生成的包含开场白和首个问题的完整回应: {initial_response[:100]}...")
+            
+            # 由于LLM已经提出了第一个问题，我们需要同步状态
+            self._update_state(DialogState.LISTENING)
+            self.context.follow_up_count = 0 
+            
+            return initial_response
+        except Exception as e:
+            self.logger.error(f"通过LLM生成开场白失败: {e}", exc_info=True)
+            # 如果LLM失败，回退到简单的问候
+            return "你好，欢迎参加面试。我们现在开始吧。请问你准备好了吗？"
     
     async def _ask_current_question(self) -> str:
         """提出当前问题"""

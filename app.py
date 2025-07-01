@@ -67,6 +67,7 @@ class AppState:
         self.executor_agent: Optional[ExecutorAgent] = None
         self.interview_task: Optional[asyncio.Task] = None
         self.is_interview_active = False
+        self.running_loop: Optional[asyncio.AbstractEventLoop] = None
         
 app_state = AppState()
 
@@ -121,10 +122,23 @@ async def process_files_and_plan(
 
 async def start_interview(enable_voice: bool, use_realtime_voice: bool = False) -> Tuple[str, Dict]:
     """开始面试"""
+    # 捕获并保存主事件循环
+    if not app_state.running_loop:
+        try:
+            app_state.running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("无法获取正在运行的事件循环。")
+            return "启动失败：内部事件循环错误", {"visible": False}
+
     try:
         if not app_state.context:
             return "请先上传简历并生成面试计划", {"visible": False}
         
+        # 检查面试计划是否存在
+        interview_plan = app_state.context.get_variable("interview_plan")
+        if not interview_plan:
+            return "面试计划不存在，请先生成或手动输入面试计划", {"visible": False}
+            
         # 创建Executor
         app_state.executor_agent = ExecutorAgent(
             enable_voice=enable_voice,
@@ -136,26 +150,22 @@ async def start_interview(enable_voice: bool, use_realtime_voice: bool = False) 
         
         # 根据模式选择不同的启动方式
         if use_realtime_voice:
-            # 实时语音模式需要特殊处理
+            # 实时语音模式
             try:
-                # 先执行初始化
-                context_with_plan = await app_state.executor_agent.process(app_state.context)
+                # 启动执行器，并传入包含面试计划的上下文
+                await app_state.executor_agent.start(app_state.context)
                 
-                # 获取语音会话
-                voice_session = context_with_plan.get_variable("voice_session")
-                if voice_session:
+                # 从执行器处理后的上下文中获取语音会话
+                voice_session = app_state.context.get_variable("voice_session")
+                if voice_session and voice_session.voice_adapter.is_running:
                     app_state.is_interview_active = True
                     mode_text = "实时语音面试"
-                    
-                    # 这里可以添加监听语音会话状态的逻辑
-                    # 或者返回语音会话的控制接口
-                    
                     return f"{mode_text}已启动成功", {"visible": True}
                 else:
-                    return "启动实时语音面试失败", {"visible": False}
+                    return "启动实时语音面试失败：未能成功创建语音会话", {"visible": False}
                     
             except Exception as e:
-                logger.error(f"启动实时语音面试失败: {e}")
+                logger.error(f"启动实时语音面试失败: {e}", exc_info=True)
                 return f"启动失败: {str(e)}", {"visible": False}
         else:
             # 传统模式（文本或传统语音）
@@ -168,7 +178,7 @@ async def start_interview(enable_voice: bool, use_realtime_voice: bool = False) 
             return f"{mode_text}已开始", {"visible": True}
         
     except Exception as e:
-        logger.error(f"启动面试失败: {e}")
+        logger.error(f"启动面试失败: {e}", exc_info=True)
         return f"启动失败: {str(e)}", {"visible": False}
 
 
@@ -184,38 +194,61 @@ async def send_supervisor_instruction(instruction: str) -> str:
         return f"发送失败: {str(e)}"
 
 
-async def stop_interview() -> str:
-    """停止面试"""
-    try:
+def stop_interview() -> str:
+    """停止面试（同步接口，避免UI阻塞）"""
+    if not app_state.running_loop or not app_state.running_loop.is_running():
+        logger.error("事件循环不可用，无法安全地停止面试。")
+        # 尝试硬性重置状态作为后备方案
+        app_state.is_interview_active = False
         if app_state.executor_agent:
-            # 检查是否有实时语音会话
-            if app_state.context:
-                voice_session = app_state.context.get_variable("voice_session")
-                if voice_session:
-                    # 停止语音会话
-                    try:
-                        await voice_session.stop_interview()
-                        logger.info("实时语音会话已停止")
-                    except Exception as e:
-                        logger.error(f"停止语音会话失败: {e}")
-            
-            # 结束面试
             app_state.executor_agent.end_interview()
-            app_state.is_interview_active = False
-            
-            # 取消异步任务
-            if app_state.interview_task:
-                app_state.interview_task.cancel()
+        return "错误：事件循环不可用，已尝试强制停止。"
+    
+    logger.info("发送面试停止指令到后台执行...")
+    # 提交异步停止任务到主事件循环，但不等待它完成
+    asyncio.run_coroutine_threadsafe(_stop_interview_async(), app_state.running_loop)
+    
+    # 立即更新UI状态，给用户即时反馈
+    return "面试停止指令已发送，正在后台安全关闭..."
+
+
+async def _stop_interview_async():
+    """停止面试的实际异步逻辑"""
+    try:
+        logger.info("开始执行异步停止流程...")
+        
+        # 检查是否有实时语音会话
+        if app_state.context:
+            voice_session = app_state.context.get_variable("voice_session")
+            if voice_session:
                 try:
-                    await app_state.interview_task
-                except asyncio.CancelledError:
-                    pass
+                    logger.info("检测到实时语音会话，正在调用非阻塞停止...")
+                    # 调用非阻塞的stop_interview，它会立即返回
+                    await voice_session.stop_interview()
+                    logger.info("非阻塞停止指令已成功调用")
+                except Exception as e:
+                    logger.error(f"调用语音会话停止方法时失败: {e}", exc_info=True)
+        
+        # 结束面试执行器状态
+        if app_state.executor_agent:
+            app_state.executor_agent.end_interview()
+            logger.info("面试执行器状态已更新为'ENDED'")
+        
+        app_state.is_interview_active = False
+        
+        # 取消可能在运行的传统面试任务
+        if app_state.interview_task and not app_state.interview_task.done():
+            logger.info("正在取消传统面试任务...")
+            app_state.interview_task.cancel()
+            try:
+                await app_state.interview_task
+            except asyncio.CancelledError:
+                logger.info("传统面试任务已成功取消")
             
-            return "面试已停止"
-        return "没有正在进行的面试"
+        logger.info("面试停止流程已在后台启动。")
+
     except Exception as e:
-        logger.error(f"停止面试失败: {e}")
-        return f"停止失败: {str(e)}"
+        logger.error(f"异步停止面试流程时发生严重错误: {e}", exc_info=True)
 
 
 def load_interview_template() -> str:
@@ -668,7 +701,41 @@ with gr.Blocks(
     # 添加定时更新对话历史的功能
     def update_conversation_display():
         """更新对话显示"""
-        return get_conversation_history()
+        try:
+            # 检查是否有活跃的面试
+            if not app_state.is_interview_active:
+                return []
+            
+            # 首先检查是否有实时语音会话
+            if app_state.context:
+                voice_session = app_state.context.get_variable("voice_session")
+                if voice_session and hasattr(voice_session, 'get_conversation_history'):
+                    try:
+                        history = voice_session.get_conversation_history()
+                        return history
+                    except Exception as e:
+                        logger.error(f"获取实时语音对话历史失败: {e}")
+            
+            # 回退到常规执行器的对话历史
+            if app_state.executor_agent and hasattr(app_state.executor_agent, 'conversation_history'):
+                # 转换为Gradio Chatbot格式
+                history = []
+                for turn in app_state.executor_agent.conversation_history:
+                    if turn.speaker == "候选人":
+                        # 候选人的消息在左边
+                        history.append([turn.content, None])
+                    else:
+                        # 面试官的消息在右边
+                        if history and history[-1][1] is None:
+                            history[-1][1] = turn.content
+                        else:
+                            history.append([None, turn.content])
+                return history
+            
+            return []
+        except Exception as e:
+            logger.error(f"更新对话显示失败: {e}")
+            return []
     
     # 每2秒更新一次对话历史（当面试进行中时）
     interview_timer = gr.Timer(2.0)

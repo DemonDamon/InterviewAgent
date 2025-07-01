@@ -93,6 +93,10 @@ class ExecutorAgent(BaseAgent):
         self.on_state_change: Optional[Callable] = None
         self.on_conversation_update: Optional[Callable] = None
     
+    async def start(self, context: AgentContext) -> AgentContext:
+        """启动执行器，作为 process 的别名，用于更清晰的启动流程"""
+        return await self.process(context)
+    
     async def process(self, context: AgentContext) -> AgentContext:
         """处理面试执行任务"""
         try:
