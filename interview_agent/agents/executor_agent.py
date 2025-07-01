@@ -12,6 +12,7 @@ import json
 from ..core.base_agent import BaseAgent, AgentContext, MessageType, AgentMessage
 from ..core.llm_client import WildcardLLMClient, Message
 from ..core.audio_handler import AudioManager
+from ..core.realtime_voice_adapter import VoiceInterviewSession
 from config.settings import settings
 
 
@@ -31,6 +32,14 @@ class ConversationTurn:
         self.speaker = speaker
         self.content = content
         self.timestamp = timestamp
+    
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            "speaker": self.speaker,
+            "content": self.content,
+            "timestamp": self.timestamp
+        }
 
 
 class ExecutorAgent(BaseAgent):
@@ -40,6 +49,7 @@ class ExecutorAgent(BaseAgent):
                  name: str = "ExecutorAgent",
                  audio_handler_type: str = "edge",
                  enable_voice: bool = True,
+                 use_realtime_voice: bool = False,
                  **kwargs):
         super().__init__(name, description="执行面试流程", **kwargs)
         self.llm = WildcardLLMClient(
@@ -50,12 +60,16 @@ class ExecutorAgent(BaseAgent):
             max_tokens=settings.executor_max_tokens
         )
         self.enable_voice = enable_voice
+        self.use_realtime_voice = use_realtime_voice
         
         # 初始化音频处理
-        if enable_voice:
+        if enable_voice and not use_realtime_voice:
             self.audio_manager = AudioManager(audio_handler_type, **kwargs)
         else:
             self.audio_manager = None
+        
+        # 语音面试会话（新增）
+        self.voice_session: Optional[VoiceInterviewSession] = None
         
         # 面试状态
         self.state = InterviewState.NOT_STARTED
@@ -80,31 +94,77 @@ class ExecutorAgent(BaseAgent):
             
             self.add_message(context, "开始执行面试...", MessageType.SYSTEM)
             
-            # 设置系统指令
-            system_instruction = await self._generate_system_instruction(interview_plan)
-            
-            # 执行面试流程
-            await self._execute_interview(interview_plan, system_instruction, context)
-            
-            # 保存对话记录
-            interview_record = await self._save_conversation_record()
-            
-            # 更新上下文
-            context.set_variable("conversation_history", [turn.to_dict() for turn in self.conversation_history])
-            context.set_variable("interview_record_file", interview_record)
-            context.add_file("interview_record", interview_record)
-            
-            self.add_message(
-                context,
-                f"面试已完成，对话记录已保存至: {interview_record}",
-                MessageType.SYSTEM
-            )
-            
-            return context
+            # 检查是否使用实时语音模式
+            if self.use_realtime_voice:
+                return await self._execute_realtime_voice_interview(interview_plan, context)
+            else:
+                return await self._execute_traditional_interview(interview_plan, context)
             
         except Exception as e:
             self.logger.error(f"面试执行失败: {e}")
             raise
+    
+    async def _execute_realtime_voice_interview(self, interview_plan: Dict[str, Any], context: AgentContext) -> AgentContext:
+        """执行实时语音面试"""
+        try:
+            self.logger.info("启动实时语音面试模式")
+            
+            # 获取候选人信息
+            candidate_info = interview_plan.get("candidate_info", {})
+            candidate_name = candidate_info.get("name", "候选人")
+            
+            # 创建语音面试会话
+            self.voice_session = VoiceInterviewSession(
+                llm_client=self.llm,
+                interview_plan=interview_plan,
+                candidate_name=candidate_name
+            )
+            
+            # 启动语音面试
+            result = await self.voice_session.start_interview()
+            
+            if result["status"] == "success":
+                self.add_message(context, "实时语音面试已启动", MessageType.SYSTEM)
+                
+                # 保存会话信息到上下文
+                context.set_variable("voice_session", self.voice_session)
+                context.set_variable("interview_mode", "realtime_voice")
+                
+                # 这里可以添加等待面试完成的逻辑
+                # 或者返回让外部控制面试流程
+                
+            else:
+                raise Exception(f"启动语音面试失败: {result['message']}")
+            
+            return context
+            
+        except Exception as e:
+            self.logger.error(f"实时语音面试执行失败: {e}")
+            raise
+    
+    async def _execute_traditional_interview(self, interview_plan: Dict[str, Any], context: AgentContext) -> AgentContext:
+        """执行传统面试流程"""
+        # 设置系统指令
+        system_instruction = await self._generate_system_instruction(interview_plan)
+        
+        # 执行面试流程
+        await self._execute_interview(interview_plan, system_instruction, context)
+        
+        # 保存对话记录
+        interview_record = await self._save_conversation_record()
+        
+        # 更新上下文
+        context.set_variable("conversation_history", [turn.to_dict() for turn in self.conversation_history])
+        context.set_variable("interview_record_file", interview_record)
+        context.add_file("interview_record", interview_record)
+        
+        self.add_message(
+            context,
+            f"面试已完成，对话记录已保存至: {interview_record}",
+            MessageType.SYSTEM
+        )
+        
+        return context
     
     async def _generate_system_instruction(self, interview_plan: Dict[str, Any]) -> str:
         """生成面试官系统指令"""
@@ -447,7 +507,12 @@ class ExecutorAgent(BaseAgent):
     
     async def add_supervisor_instruction(self, instruction: str):
         """添加监督员指令"""
-        await self.supervisor_instructions.put(instruction)
+        if self.use_realtime_voice and self.voice_session:
+            # 实时语音模式下，直接发送给语音会话
+            return await self.voice_session.add_supervisor_instruction(instruction)
+        else:
+            # 传统模式下，添加到队列
+            await self.supervisor_instructions.put(instruction)
     
     def pause_interview(self):
         """暂停面试"""
