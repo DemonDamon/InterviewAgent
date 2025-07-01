@@ -37,13 +37,18 @@ class VoiceServiceClient:
         try:
             self.logger.info(f"连接到语音服务: {self.config['base_url']}")
             
+            # websockets 13.x 使用 extra_headers 参数
             self.ws = await websockets.connect(
                 self.config['base_url'],
                 extra_headers=self.config['headers'],
                 ping_interval=None
             )
             
-            self.logid = self.ws.response_headers.get("X-Tt-Logid", "")
+            # websockets 13.x 中响应头的获取方式
+            if hasattr(self.ws, 'response_headers'):
+                self.logid = self.ws.response_headers.get("X-Tt-Logid", "") or ""
+            else:
+                self.logid = ""
             self.logger.info(f"连接成功，logid: {self.logid}")
             
             # 发送连接请求
@@ -108,16 +113,13 @@ class VoiceServiceClient:
             if not self.is_connected or not self.is_session_started:
                 raise Exception("会话未启动")
             
-            # 构建文本消息
-            text_config = {
-                "text": text,
-                "type": "text_to_speech"
-            }
-            
-            request = VoiceProtocolHandler.create_session_request(
-                self.session_id, text_config
+            # 使用专门的TTS请求方法
+            request = VoiceProtocolHandler.create_tts_request(
+                self.session_id, text
             )
             await self.ws.send(request)
+            
+            self.logger.info(f"已发送TTS请求: {text[:50]}...")
             
         except Exception as e:
             self.logger.error(f"发送文本失败: {e}")
@@ -139,19 +141,23 @@ class VoiceServiceClient:
                     if (message.event and 
                         message.event in [152, 153]):  # 会话结束事件
                         self.logger.info(f"收到会话结束事件: {message.event}")
+                        self.is_session_started = False
                         break
                         
                 except websockets.exceptions.ConnectionClosed:
                     self.logger.info("WebSocket连接已关闭")
+                    self.is_connected = False
+                    self.is_session_started = False
                     break
                 except Exception as e:
                     self.logger.error(f"接收消息错误: {e}")
-                    break
+                    # 不要立即断开，可能是临时错误
+                    await asyncio.sleep(0.1)
                     
         except Exception as e:
             self.logger.error(f"消息接收循环错误: {e}")
         finally:
-            self.is_connected = False
+            # 只有在真正断开连接时才更新状态
             if self.on_connection_lost:
                 await self.on_connection_lost()
     
@@ -173,30 +179,54 @@ class VoiceServiceClient:
     async def disconnect(self):
         """断开连接"""
         try:
+            # 先标记状态
+            self.is_session_started = False
+            
             if self.is_connected and self.ws:
                 self.logger.info("断开语音服务连接")
                 
-                # 发送断开连接请求
-                request = VoiceProtocolHandler.create_finish_connection_request()
-                await self.ws.send(request)
-                
-                # 接收响应
                 try:
-                    response = await asyncio.wait_for(self.ws.recv(), timeout=2.0)
-                    message = VoiceProtocolHandler.parse_response(response)
-                    self.logger.info(f"断开连接响应: {message.payload_msg}")
-                except asyncio.TimeoutError:
-                    self.logger.warning("断开连接响应超时")
+                    # 只有在WebSocket连接正常时才发送断开请求
+                    # 检查连接是否打开（兼容不同版本的websockets）
+                    if hasattr(self.ws, 'state') and hasattr(self.ws.state, 'name'):
+                        is_open = self.ws.state.name == 'OPEN'
+                    elif hasattr(self.ws, 'open'):
+                        is_open = self.ws.open
+                    else:
+                        # 默认尝试发送
+                        is_open = True
+                    
+                    if is_open:
+                        # 发送断开连接请求
+                        request = VoiceProtocolHandler.create_finish_connection_request()
+                        await self.ws.send(request)
+                        
+                        # 接收响应（设置短超时）
+                        try:
+                            response = await asyncio.wait_for(self.ws.recv(), timeout=1.0)
+                            message = VoiceProtocolHandler.parse_response(response)
+                            self.logger.info(f"断开连接响应: {message.payload_msg}")
+                        except asyncio.TimeoutError:
+                            self.logger.debug("断开连接响应超时（正常情况）")
+                        except websockets.exceptions.ConnectionClosed:
+                            self.logger.debug("连接已关闭")
+                except Exception as e:
+                    self.logger.debug(f"发送断开请求时出错（可忽略）: {e}")
                 
                 # 关闭WebSocket
-                await self.ws.close()
+                try:
+                    await self.ws.close()
+                except Exception as e:
+                    self.logger.debug(f"关闭WebSocket时出错（可忽略）: {e}")
                 
         except Exception as e:
             self.logger.error(f"断开连接失败: {e}")
         finally:
+            # 确保状态被重置
             self.is_connected = False
             self.is_session_started = False
             self.ws = None
+            self.logger.info("连接已断开")
     
     async def _send_connection_request(self):
         """发送连接请求"""

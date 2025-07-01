@@ -231,30 +231,45 @@ class IntelligentDialogManager:
     
     async def _generate_greeting(self) -> str:
         """生成开场白"""
+        # 调试：打印完整的面试计划
+        self.logger.info(f"面试计划内容: {json.dumps(self.interview_plan, ensure_ascii=False, indent=2)}")
+        
         candidate_info = self.interview_plan.get("candidate_info", {})
         warmup = self.interview_plan.get("warmup", {})
         
-        greeting_prompt = f"""
-作为面试官，为候选人{self.candidate_name}生成一个自然、友好的开场白。
-
-候选人信息：
-- 姓名：{candidate_info.get('name', self.candidate_name)}
-- 应聘岗位：{candidate_info.get('position', '未知岗位')}
-- 经验年限：{candidate_info.get('experience_years', '未知')}
-
-开场流程：
-{warmup.get('steps', [])}
-
-请生成一个温馨、专业的开场白，让候选人感到放松。
-"""
+        # 获取候选人姓名
+        candidate_name = candidate_info.get('name', self.candidate_name)
+        position = candidate_info.get('position', '算法工程师')
+        experience_years = candidate_info.get('experience_years', '未知')
         
-        messages = [
-            Message(role="system", content="你是一位友好、专业的面试官。"),
-            Message(role="user", content=greeting_prompt)
-        ]
+        # 获取开场步骤
+        warmup_steps = warmup.get('steps', [])
         
-        response = self.llm_client.chat_completion(messages)
-        return response.content
+        # 如果有开场步骤，使用第一个步骤作为基础
+        if warmup_steps and isinstance(warmup_steps, list) and len(warmup_steps) > 0:
+            first_step = warmup_steps[0]
+            if isinstance(first_step, str) and "面试官" in first_step:
+                # 使用预定义的开场白
+                greeting = first_step
+            else:
+                # 基于信息生成开场白
+                greeting = f"你好{candidate_name}，我是今天的面试官，负责{position}岗位的技术面试环节。"
+        else:
+            # 使用默认开场白
+            greeting = f"你好{candidate_name}，欢迎参加今天的面试。我是你的面试官。"
+        
+        # 添加面试流程介绍
+        sections = self.interview_plan.get("sections", [])
+        if sections:
+            section_names = [s.get('name', '') for s in sections[:3]]  # 只提前3个主要环节
+            if section_names:
+                greeting += f"\n\n今天的面试主要包括以下环节：{', '.join(section_names)}等。"
+        
+        greeting += "\n\n首先，请你做一个简单的自我介绍，包括你的教育背景、工作经验和主要技能。"
+        
+        self.logger.info(f"生成的开场白: {greeting}")
+        
+        return greeting
     
     async def _ask_current_question(self) -> str:
         """提出当前问题"""

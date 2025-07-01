@@ -55,7 +55,10 @@ class RealtimeVoiceAdapter:
             await self._connect_websocket()
             
             # 发送开场白
-            await self._send_text_to_speech(greeting)
+            # 暂时禁用send_text，因为可能触发recreate session错误
+            # TODO: 需要确认正确的TTS协议
+            # await self._send_text_to_speech(greeting)
+            self.logger.info(f"面试官开场白: {greeting}")
             
             # 启动音频处理循环
             await self._start_audio_processing_loop()
@@ -122,7 +125,10 @@ class RealtimeVoiceAdapter:
                 response = await self.dialog_manager.process_candidate_input(text)
                 
                 # 将回应转换为语音
-                await self._send_text_to_speech(response)
+                # 暂时禁用send_text，因为可能触发recreate session错误
+                # TODO: 需要确认正确的TTS协议
+                # await self._send_text_to_speech(response)
+                self.logger.info(f"面试官回复: {response}")
                 
         except Exception as e:
             self.logger.error(f"处理语音文本失败: {e}")
@@ -250,3 +256,30 @@ class VoiceInterviewSession:
             "is_connected": self.voice_adapter.is_connected,
             "dialog_summary": self.voice_adapter.get_dialog_summary()
         } 
+    
+    def get_conversation_history(self):
+        """获取对话历史（Gradio格式）"""
+        # 从对话管理器获取原始对话历史
+        raw_history = self.dialog_manager.context.conversation_history
+        
+        # 转换为Gradio Chatbot格式
+        gradio_history = []
+        temp_user_msg = None
+        
+        for turn in raw_history:
+            if turn["role"] == "candidate":
+                # 候选人的消息在左边
+                temp_user_msg = turn["content"]
+            elif turn["role"] == "interviewer":
+                # 面试官的消息在右边
+                if temp_user_msg is not None:
+                    gradio_history.append([temp_user_msg, turn["content"]])
+                    temp_user_msg = None
+                else:
+                    gradio_history.append([None, turn["content"]])
+        
+        # 如果最后有未配对的用户消息
+        if temp_user_msg is not None:
+            gradio_history.append([temp_user_msg, None])
+        
+        return gradio_history 

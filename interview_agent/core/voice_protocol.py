@@ -105,13 +105,13 @@ class VoiceProtocolHandler:
                 start += 4
                 
             if message_type_specific_flags & MSG_WITH_EVENT > 0:
-                message.event = int.from_bytes(payload[:4], "big", signed=False)
+                message.event = int.from_bytes(payload[start:start+4], "big", signed=False)
                 start += 4
                 
             payload = payload[start:]
             session_id_size = int.from_bytes(payload[:4], "big", signed=True)
-            session_id = payload[4:session_id_size]
-            message.session_id = str(session_id)
+            session_id = payload[4:4 + session_id_size]
+            message.session_id = session_id.decode('utf-8') if session_id else ""
             payload = payload[4 + session_id_size:]
             payload_size = int.from_bytes(payload[:4], "big", signed=False)
             payload_msg = payload[4:]
@@ -199,6 +199,33 @@ class VoiceProtocolHandler:
         request.extend(int(2).to_bytes(4, 'big'))
         payload_bytes = str.encode("{}")
         payload_bytes = gzip.compress(payload_bytes)
+        request.extend((len(payload_bytes)).to_bytes(4, 'big'))
+        request.extend(payload_bytes)
+        return request
+    
+    @staticmethod
+    def create_tts_request(session_id: str, text: str) -> bytearray:
+        """创建TTS（文本转语音）请求"""
+        # 构建TTS配置
+        tts_config = {
+            "text": text,
+            "tts": {
+                "audio_config": {
+                    "channel": 1,
+                    "format": "pcm",
+                    "sample_rate": 24000
+                }
+            }
+        }
+        
+        payload_bytes = str.encode(json.dumps(tts_config))
+        payload_bytes = gzip.compress(payload_bytes)
+        
+        # 使用事件码101（TTS请求）
+        request = bytearray(VoiceProtocolHandler.generate_header())
+        request.extend(int(101).to_bytes(4, 'big'))  # 101是TTS事件码
+        request.extend((len(session_id)).to_bytes(4, 'big'))
+        request.extend(str.encode(session_id))
         request.extend((len(payload_bytes)).to_bytes(4, 'big'))
         request.extend(payload_bytes)
         return request 

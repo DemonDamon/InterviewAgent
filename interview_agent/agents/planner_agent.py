@@ -765,10 +765,242 @@ class PlannerAgent(BaseAgent):
         return {
             "duration_minutes": 5,
             "steps": [
-                "询问候选人是否还有其他想要补充的内容",
-                "给候选人提问的机会：你有什么想要了解的吗？",
-                "回答候选人关于公司、团队、项目的问题",
-                "告知后续流程：感谢你今天的时间，后续如果有进一步的消息，HR会及时与你联系",
-                "友好道别"
+                "感谢候选人的时间，询问是否有任何问题想要了解",
+                "候选人提问（关于团队、项目、公司文化等）",
+                "回答候选人的问题",
+                "介绍后续流程和时间安排",
+                "感谢并送别候选人"
+            ]
+        }
+    
+    def parse_markdown_to_plan(self, markdown_text: str) -> Dict[str, Any]:
+        """解析Markdown格式的面试流程为面试计划对象"""
+        try:
+            lines = markdown_text.strip().split('\n')
+            plan = InterviewPlan()
+            
+            # 初始化变量
+            current_section = None
+            current_question = None
+            in_section = False
+            sections_data = []
+            
+            # 解析候选人信息
+            candidate_info = {
+                "name": "候选人",
+                "position": "未知",
+                "experience_years": "未知",
+                "core_skills": []
+            }
+            
+            # 解析开场和结束环节
+            warmup = {
+                "duration_minutes": 5,
+                "steps": []
+            }
+            closing = {
+                "duration_minutes": 5,
+                "steps": []
+            }
+            
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                
+                # 跳过空行
+                if not line:
+                    i += 1
+                    continue
+                
+                # 解析候选人信息
+                if "姓名" in line and "：" in line:
+                    candidate_info["name"] = line.split("：")[1].strip().replace("**", "")
+                elif "应聘岗位" in line and "：" in line:
+                    candidate_info["position"] = line.split("：")[1].strip().replace("**", "")
+                elif "经验年限" in line and "：" in line:
+                    candidate_info["experience_years"] = line.split("：")[1].strip().replace("**", "")
+                elif "核心技能" in line and "：" in line:
+                    skills_str = line.split("：")[1].strip().replace("**", "")
+                    candidate_info["core_skills"] = [s.strip() for s in skills_str.split("、")]
+                
+                # 解析开场环节
+                elif "面试开场" in line or "Warm-up" in line:
+                    i += 1
+                    while i < len(lines) and not lines[i].startswith("##"):
+                        if "预计时长" in lines[i]:
+                            try:
+                                warmup["duration_minutes"] = int(lines[i].split("：")[1].replace("分钟", "").strip())
+                            except:
+                                pass
+                        elif lines[i].strip().startswith(("1.", "-")) and lines[i].strip()[2:]:
+                            warmup["steps"].append(lines[i].strip()[2:].strip())
+                        i += 1
+                    continue
+                
+                # 解析正式面试环节
+                elif "正式面试环节" in line:
+                    in_section = True
+                    i += 1
+                    continue
+                
+                # 解析具体环节
+                elif in_section and line.startswith("###") and not line.startswith("####"):
+                    # 保存之前的环节
+                    if current_section and current_section.get("questions"):
+                        sections_data.append(current_section)
+                    
+                    # 开始新环节
+                    section_name = line.replace("###", "").strip()
+                    # 去除编号
+                    if "." in section_name:
+                        section_name = section_name.split(".", 1)[1].strip()
+                    
+                    current_section = {
+                        "name": section_name,
+                        "description": "",
+                        "duration_minutes": 10,
+                        "questions": []
+                    }
+                    current_question = None
+                
+                # 解析环节属性
+                elif current_section and "时长" in line and "：" in line:
+                    try:
+                        current_section["duration_minutes"] = int(line.split("：")[1].replace("分钟", "").strip())
+                    except:
+                        pass
+                elif current_section and "描述" in line and "：" in line:
+                    current_section["description"] = line.split("：")[1].strip()
+                
+                # 解析问题
+                elif current_section and line.startswith("####"):
+                    # 保存之前的问题
+                    if current_question:
+                        current_section["questions"].append(current_question)
+                    
+                    # 开始新问题
+                    question_text = line.replace("####", "").strip()
+                    if "：" in question_text:
+                        question_text = question_text.split("：", 1)[1].strip()
+                    
+                    current_question = {
+                        "question": question_text,
+                        "type": "技术问题",
+                        "duration_minutes": 5,
+                        "evaluation_points": [],
+                        "reference_answer": "",
+                        "follow_up_questions": []
+                    }
+                
+                # 解析问题属性
+                elif current_question:
+                    if "类型" in line and "：" in line:
+                        current_question["type"] = line.split("：")[1].strip()
+                    elif "预计时间" in line and "：" in line:
+                        try:
+                            current_question["duration_minutes"] = int(line.split("：")[1].replace("分钟", "").strip())
+                        except:
+                            pass
+                    elif "考察点" in line and "：" in line:
+                        points_str = line.split("：")[1].strip()
+                        current_question["evaluation_points"] = [p.strip() for p in points_str.split("、")]
+                    elif "参考答案要点" in line and "：" in line:
+                        current_question["reference_answer"] = line.split("：")[1].strip()
+                    elif "追问方向" in line:
+                        # 开始收集追问
+                        i += 1
+                        while i < len(lines) and lines[i].strip().startswith("-"):
+                            follow_up = lines[i].strip()[1:].strip()
+                            if "问题" in follow_up and "：" in follow_up:
+                                follow_up = follow_up.split("：")[1].strip()
+                            current_question["follow_up_questions"].append(follow_up)
+                            i += 1
+                        continue
+                
+                # 解析结束环节
+                elif "面试结束" in line:
+                    in_section = False
+                    if current_section and current_section.get("questions"):
+                        sections_data.append(current_section)
+                    if current_question and current_section:
+                        current_section["questions"].append(current_question)
+                    
+                    i += 1
+                    while i < len(lines) and not lines[i].startswith("##"):
+                        if "预计时长" in lines[i]:
+                            try:
+                                closing["duration_minutes"] = int(lines[i].split("：")[1].replace("分钟", "").strip())
+                            except:
+                                pass
+                        elif lines[i].strip().startswith("-") and lines[i].strip()[1:]:
+                            closing["steps"].append(lines[i].strip()[1:].strip())
+                        i += 1
+                    continue
+                
+                i += 1
+            
+            # 保存最后的环节和问题
+            if current_question and current_section:
+                current_section["questions"].append(current_question)
+            if current_section and current_section.get("questions"):
+                sections_data.append(current_section)
+            
+            # 构建面试计划
+            plan.candidate_info = candidate_info
+            plan.warmup = warmup if warmup["steps"] else self._get_default_warmup()
+            plan.closing = closing if closing["steps"] else self._get_default_closing()
+            
+            # 添加环节
+            for section_data in sections_data:
+                section = InterviewSection(
+                    name=section_data["name"],
+                    description=section_data["description"],
+                    duration_minutes=section_data["duration_minutes"],
+                    questions=section_data["questions"]
+                )
+                plan.add_section(section)
+            
+            # 如果没有解析到任何环节，使用默认环节
+            if not plan.sections:
+                self.logger.warning("未能从Markdown解析到面试环节，使用默认环节")
+                default_sections = self._generate_default_sections()
+                for section_data in default_sections:
+                    section = InterviewSection(
+                        name=section_data["name"],
+                        description=section_data["description"],
+                        duration_minutes=section_data["duration_minutes"],
+                        questions=section_data["questions"]
+                    )
+                    plan.add_section(section)
+            
+            plan.calculate_total_duration()
+            
+            return plan.to_dict()
+            
+        except Exception as e:
+            self.logger.error(f"解析Markdown失败: {e}")
+            raise ValueError(f"解析面试流程失败: {str(e)}")
+    
+    def _get_default_warmup(self) -> Dict[str, Any]:
+        """获取默认的开场环节"""
+        return {
+            "duration_minutes": 5,
+            "steps": [
+                "面试官自我介绍",
+                "介绍面试流程",
+                "请候选人做自我介绍",
+                "基于自我介绍的破冰问题"
+            ]
+        }
+    
+    def _get_default_closing(self) -> Dict[str, Any]:
+        """获取默认的结束环节"""
+        return {
+            "duration_minutes": 5,
+            "steps": [
+                "询问候选人是否有问题",
+                "回答候选人的问题",
+                "介绍后续流程",
+                "感谢并送别"
             ]
         } 

@@ -21,8 +21,13 @@ class Settings(BaseSettings):
     """应用配置"""
     
     # Wildcard API配置
-    wildcard_api_key: str = Field("", env="WILDCARD_API_KEY")
-    wildcard_api_base: str = Field("https://api.gptsapi.net", env="WILDCARD_API_BASE")
+    wildcard_api_key: str = Field(default="", env="WILDCARD_API_KEY")
+    wildcard_api_base: str = Field(default="https://api.gptsapi.net", env="WILDCARD_API_BASE")
+    
+    # HTTP代理配置（用于解决SSL问题）
+    http_proxy: Optional[str] = Field(default=None, env="HTTP_PROXY")
+    https_proxy: Optional[str] = Field(default=None, env="HTTPS_PROXY")
+    verify_ssl: bool = Field(default=False, env="VERIFY_SSL")
     
     # LLM通用配置
     llm_provider: str = Field("wildcard", env="LLM_PROVIDER")  # wildcard, openai, anthropic

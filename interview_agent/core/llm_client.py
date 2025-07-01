@@ -6,6 +6,9 @@ import json
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 import httpx
+import time
+import ssl
+import logging
 
 
 @dataclass
@@ -38,6 +41,7 @@ class WildcardLLMClient:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.logger = logging.getLogger(__name__)
         
         if not self.api_key:
             raise ValueError("Wildcard API key not provided")
@@ -45,6 +49,14 @@ class WildcardLLMClient:
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
+        }
+        
+        # 创建自定义的HTTP客户端配置
+        self.client_config = {
+            "timeout": httpx.Timeout(60.0, connect=10.0),
+            "verify": False,  # 暂时禁用SSL验证以避免证书问题
+            "follow_redirects": True,
+            "limits": httpx.Limits(max_keepalive_connections=5, max_connections=10)
         }
     
     def chat_completion(self,
@@ -74,33 +86,50 @@ class WildcardLLMClient:
             **kwargs
         }
         
-        # 发送请求
-        try:
-            with httpx.Client() as client:
-                response = client.post(
-                    f"{self.api_base}/v1/chat/completions",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=60.0
-                )
-                response.raise_for_status()
+        # 重试机制
+        max_retries = 3
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries):
+            try:
+                with httpx.Client(**self.client_config) as client:
+                    response = client.post(
+                        f"{self.api_base}/v1/chat/completions",
+                        headers=self.headers,
+                        json=payload
+                    )
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    
+                    # 提取响应内容
+                    content = data["choices"][0]["message"]["content"]
+                    
+                    return LLMResponse(
+                        content=content,
+                        model=data.get("model", model or self.model),
+                        usage=data.get("usage", {}),
+                        raw_response=data
+                    )
+                    
+            except (httpx.ConnectError, ssl.SSLError) as e:
+                self.logger.warning(f"SSL/连接错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    raise Exception(f"API连接失败（已重试{max_retries}次）: {str(e)}")
+                    
+            except httpx.RequestError as e:
+                self.logger.error(f"API请求错误: {str(e)}")
+                if attempt < max_retries - 1 and "timeout" in str(e).lower():
+                    time.sleep(retry_delay)
+                    continue
+                raise Exception(f"API请求失败: {str(e)}")
                 
-                data = response.json()
-                
-                # 提取响应内容
-                content = data["choices"][0]["message"]["content"]
-                
-                return LLMResponse(
-                    content=content,
-                    model=data.get("model", model or self.model),
-                    usage=data.get("usage", {}),
-                    raw_response=data
-                )
-                
-        except httpx.RequestError as e:
-            raise Exception(f"API请求失败: {str(e)}")
-        except Exception as e:
-            raise Exception(f"处理响应时出错: {str(e)}")
+            except Exception as e:
+                self.logger.error(f"处理响应时出错: {str(e)}")
+                raise Exception(f"处理响应时出错: {str(e)}")
     
     def generate_interview_questions(self,
                                    candidate_info: str,

@@ -57,6 +57,11 @@ DEBUG=false
 PORT=7860
 LOG_LEVEL=INFO
 
+# HTTP代理配置（解决SSL问题）
+# HTTP_PROXY=http://127.0.0.1:7890
+# HTTPS_PROXY=http://127.0.0.1:7890
+# VERIFY_SSL=false
+
 # Volcengine Realtime Dialog API
 VOLC_APP_ID=
 VOLC_ACCESS_KEY=
