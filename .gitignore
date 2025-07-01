@@ -129,3 +129,6 @@ milvus-backup/
 *.key
 *.pem
 secrets/
+interview_background_*
+interview_panel_*
+json_debug*
