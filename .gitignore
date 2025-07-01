@@ -132,3 +132,6 @@ secrets/
 interview_background_*
 interview_panel_*
 json_debug*
+
+realtime_dialog/*.wav
+*.wav

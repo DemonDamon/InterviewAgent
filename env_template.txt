@@ -56,3 +56,9 @@ DEBUG=false
 # Gradio界面端口
 PORT=7860
 LOG_LEVEL=INFO
+
+# Volcengine Realtime Dialog API
+VOLC_APP_ID=
+VOLC_ACCESS_KEY=
+VOLC_RESOURCE_ID=volc.speech.dialog
+VOLC_APP_KEY=PlgvMymc7f3tQnJ6

@@ -1,14 +1,25 @@
 import uuid
 import pyaudio
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# 获取项目根目录路径并加载 .env 文件
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+env_path = project_root / '.env'
+
+# 从项目根目录的 .env 文件加载环境变量
+load_dotenv(env_path)
 
 # 配置信息
 ws_connect_config = {
     "base_url": "wss://openspeech.bytedance.com/api/v3/realtime/dialogue",
     "headers": {
-        "X-Api-App-ID": "8195922735",
-        "X-Api-Access-Key": "Tm1NNE5ESXpNbUkyT0RjeU5HSTNObUZtTkRRMFpqUmtPV1F6T1RrMVlXSQ==",
-        "X-Api-Resource-Id": "volc.speech.dialog",
-        "X-Api-App-Key": "PlgvMymc7f3tQnJ6",
+        "X-Api-App-ID": os.getenv("VOLC_APP_ID", "YOUR_VOLC_APP_ID"),
+        "X-Api-Access-Key": os.getenv("VOLC_ACCESS_KEY", "YOUR_VOLC_ACCESS_KEY"),
+        "X-Api-Resource-Id": os.getenv("VOLC_RESOURCE_ID", "volc.speech.dialog"),
+        "X-Api-App-Key": "PlgvMymc7f3tQnJ6",  # 固定值，根据官方文档
         "X-Api-Connect-Id": str(uuid.uuid4()),
     }
 }
