@@ -7,7 +7,8 @@ LLM_PROVIDER=wildcard
 # LLM_MODEL=claude-3-5-sonnet-20241022
 LLM_MODEL=gpt-4o
 LLM_TEMPERATURE=0.7
-LLM_MAX_TOKENS=16000  # 大模型生成的最大token数
+# 大模型生成的最大token数
+LLM_MAX_TOKENS=16000
 
 # Agent特定LLM参数
 PLANNER_TEMPERATURE=0.7
@@ -33,18 +34,25 @@ QDRANT_URL=http://localhost:6333
 # 面试配置
 DEFAULT_INTERVIEW_DURATION=30
 MAX_QUESTIONS_PER_INTERVIEW=10
-RESUME_MAX_LENGTH=16000  # 生成面试环节的最大输入长度
+# 生成面试环节的最大输入长度
+RESUME_MAX_LENGTH=16000
 
 # 音频配置
-TTS_BACKEND=edge  # 语音合成后端
-STT_BACKEND=openai  # 语音识别后端
+# 语音合成后端
+TTS_BACKEND=edge
+# 语音识别后端
+STT_BACKEND=openai
 
 # 文件存储
-UPLOAD_DIR=./uploads  # PDF上传目录
-REPORT_DIR=./reports  # 面试报告存储目录
-MAX_FILE_SIZE=10485760  # 10MB
+# PDF上传目录
+UPLOAD_DIR=./uploads
+# 面试报告存储目录
+REPORT_DIR=./reports
+# 10MB
+MAX_FILE_SIZE=10485760
 
 # 应用配置
 DEBUG=false
-PORT=7860  # Gradio界面端口
+# Gradio界面端口
+PORT=7860
 LOG_LEVEL=INFO
