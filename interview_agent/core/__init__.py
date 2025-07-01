@@ -11,7 +11,14 @@ from .base_agent import (
     BaseAgent, AgentContext, AgentStatus, AgentMessage, MessageType,
     ChainAgent, ConditionalAgent, LoopAgent
 )
-from .audio_handler import AudioManager, AudioHandler
+# 条件导入音频处理模块
+try:
+    from .audio_handler import AudioManager, AudioHandler
+    _AUDIO_AVAILABLE = True
+except ImportError:
+    AudioManager = None
+    AudioHandler = None
+    _AUDIO_AVAILABLE = False
 
 __all__ = [
     # 简历解析
@@ -50,9 +57,9 @@ __all__ = [
     "MessageType",
     "ChainAgent",
     "ConditionalAgent",
-    "LoopAgent",
-    
-    # 音频处理
-    "AudioManager",
-    "AudioHandler"
-] 
+    "LoopAgent"
+]
+
+# 条件性添加音频处理模块
+if _AUDIO_AVAILABLE:
+    __all__.extend(["AudioManager", "AudioHandler"]) 

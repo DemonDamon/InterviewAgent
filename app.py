@@ -119,14 +119,17 @@ async def process_files_and_plan(
         return "", "", f"处理失败: {str(e)}"
 
 
-async def start_interview(enable_voice: bool) -> Tuple[str, Dict]:
+async def start_interview(enable_voice: bool, use_realtime_voice: bool = False) -> Tuple[str, Dict]:
     """开始面试"""
     try:
         if not app_state.context:
             return "请先上传简历并生成面试计划", {}
         
         # 创建Executor
-        app_state.executor_agent = ExecutorAgent(enable_voice=enable_voice)
+        app_state.executor_agent = ExecutorAgent(
+            enable_voice=enable_voice,
+            use_realtime_voice=use_realtime_voice
+        )
         
         # 设置回调
         app_state.executor_agent.on_state_change = lambda state: logger.info(f"面试状态: {state}")
@@ -137,7 +140,8 @@ async def start_interview(enable_voice: bool) -> Tuple[str, Dict]:
             app_state.executor_agent.run(app_state.context)
         )
         
-        return "面试已开始", {"visible": True}
+        mode_text = "实时语音面试" if use_realtime_voice else ("语音面试" if enable_voice else "文本面试")
+        return f"{mode_text}已开始", {"visible": True}
         
     except Exception as e:
         logger.error(f"启动面试失败: {e}")
@@ -211,6 +215,11 @@ def create_interview_panel_ui():
         with gr.Column(scale=1):
             gr.Markdown("### 面试控制")
             enable_voice = gr.Checkbox(label="启用语音交互", value=False)
+            use_realtime_voice = gr.Checkbox(
+                label="使用实时语音模式（豆包）", 
+                value=False,
+                info="启用后将使用豆包实时语音进行智能对话"
+            )
             start_btn = gr.Button("开始面试", variant="primary")
             stop_btn = gr.Button("结束面试", variant="stop")
             
@@ -241,6 +250,7 @@ def create_interview_panel_ui():
     
     return {
         "enable_voice": enable_voice,
+        "use_realtime_voice": use_realtime_voice,
         "start_btn": start_btn,
         "stop_btn": stop_btn,
         "supervisor_input": supervisor_input,
@@ -361,7 +371,7 @@ with gr.Blocks(
     
     interview_panel["start_btn"].click(
         start_interview,
-        inputs=[interview_panel["enable_voice"]],
+        inputs=[interview_panel["enable_voice"], interview_panel["use_realtime_voice"]],
         outputs=[interview_status, interview_panel["audio_visualizer"]]
     )
     

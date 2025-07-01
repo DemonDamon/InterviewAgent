@@ -11,9 +11,16 @@ import json
 
 from ..core.base_agent import BaseAgent, AgentContext, MessageType, AgentMessage
 from ..core.llm_client import WildcardLLMClient, Message
-from ..core.audio_handler import AudioManager
 from ..core.realtime_voice_adapter import VoiceInterviewSession
 from config.settings import settings
+
+# 条件导入AudioManager
+try:
+    from ..core.audio_handler import AudioManager
+    AUDIO_HANDLER_AVAILABLE = True
+except ImportError:
+    AudioManager = None
+    AUDIO_HANDLER_AVAILABLE = False
 
 
 class InterviewState(Enum):
@@ -63,10 +70,12 @@ class ExecutorAgent(BaseAgent):
         self.use_realtime_voice = use_realtime_voice
         
         # 初始化音频处理
-        if enable_voice and not use_realtime_voice:
+        if enable_voice and not use_realtime_voice and AUDIO_HANDLER_AVAILABLE:
             self.audio_manager = AudioManager(audio_handler_type, **kwargs)
         else:
             self.audio_manager = None
+            if enable_voice and not use_realtime_voice and not AUDIO_HANDLER_AVAILABLE:
+                self.logger.warning("传统音频处理不可用，建议使用实时语音模式")
         
         # 语音面试会话（新增）
         self.voice_session: Optional[VoiceInterviewSession] = None

@@ -164,7 +164,7 @@ class IntelligentDialogManager:
             Message(role="user", content=analysis_prompt)
         ]
         
-        response = await self.llm_client.chat_completion(messages)
+        response = self.llm_client.chat_completion(messages)
         intervention_response = response.content
         
         # 记录干预
@@ -253,7 +253,7 @@ class IntelligentDialogManager:
             Message(role="user", content=greeting_prompt)
         ]
         
-        response = await self.llm_client.chat_completion(messages)
+        response = self.llm_client.chat_completion(messages)
         return response.content
     
     async def _ask_current_question(self) -> str:
@@ -278,7 +278,7 @@ class IntelligentDialogManager:
         """生成追问"""
         self._update_state(DialogState.FOLLOWING_UP)
         
-        follow_up_data = await self.llm_client.generate_follow_up(
+        follow_up_data = self.llm_client.generate_follow_up(
             question=current_question.get("question", ""),
             answer=candidate_response,
             context="技术面试"
@@ -331,7 +331,7 @@ class IntelligentDialogManager:
     
     async def _analyze_response(self, response: str, question: Dict) -> Dict:
         """分析候选人回答"""
-        return await self.llm_client.analyze_answer(
+        return self.llm_client.analyze_answer(
             question=question.get("question", ""),
             answer=response,
             evaluation_criteria=question.get("evaluation_points", [])
@@ -353,7 +353,7 @@ class IntelligentDialogManager:
             Message(role="user", content=clarification_prompt)
         ]
         
-        result = await self.llm_client.chat_completion(messages)
+        result = self.llm_client.chat_completion(messages)
         clarification = result.content
         
         self.context.add_conversation("interviewer", clarification, {

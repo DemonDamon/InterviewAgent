@@ -15,10 +15,11 @@ import os
 try:
     import pyaudio
     PYAUDIO_AVAILABLE = True
+    logging.info("PyAudio可用，支持实时音频处理")
 except ImportError:
     pyaudio = None
     PYAUDIO_AVAILABLE = False
-    logging.warning("pyaudio不可用，将使用模拟音频模式")
+    logging.info("PyAudio不可用，将使用模拟音频模式（语音服务仍可正常工作）")
 
 from .voice_client import VoiceServiceClient
 from .voice_protocol import VoiceMessage
