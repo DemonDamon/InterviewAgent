@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")
     max_file_size: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB
     
+    # 火山引擎语音服务配置
+    volc_app_id: str = Field("", env="VOLC_APP_ID")
+    volc_access_key: str = Field("", env="VOLC_ACCESS_KEY")
+    volc_resource_id: str = Field("volc.speech.dialog", env="VOLC_RESOURCE_ID")
+    volc_app_key: str = Field("PlgvMymc7f3tQnJ6", env="VOLC_APP_KEY")  # 固定值
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -134,6 +140,12 @@ STT_BACKEND=openai
 UPLOAD_DIR=./uploads
 REPORT_DIR=./reports
 MAX_FILE_SIZE=10485760
+
+# 火山引擎语音服务配置
+VOLC_APP_ID=your_app_id
+VOLC_ACCESS_KEY=your_access_key
+VOLC_RESOURCE_ID=volc.speech.dialog
+VOLC_APP_KEY=PlgvMymc7f3tQnJ6
 
 # 应用配置
 DEBUG=false
