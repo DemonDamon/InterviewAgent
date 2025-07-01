@@ -251,7 +251,11 @@ def create_interview_panel_ui():
 
 
 # 创建Gradio界面
-with gr.Blocks(title="AI面试智能体", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(
+    title="AI面试智能体", 
+    theme=gr.themes.Soft(),
+    css=".scrollable-column { height: 70vh; overflow-y: auto; border: 1px solid #e0e0e0; padding: 10px; border-radius: 5px; }"
+) as demo:
     gr.Markdown("""
     # 🤖 AI面试智能体系统
     
@@ -289,11 +293,15 @@ with gr.Blocks(title="AI面试智能体", theme=gr.themes.Soft()) as demo:
             
             with gr.Column(scale=2):
                 with gr.Tab("面试背景"):
-                    background_display = gr.Markdown(label="面试背景文档")
-                
+                    with gr.Column(elem_classes=["scrollable-column"]):
+                        background_display = gr.Markdown(label="面试背景文档")
+                    copy_background_btn = gr.Button("复制背景信息")
+
                 with gr.Tab("面试流程"):
-                    panel_display = gr.Markdown(label="面试流程规划")
-                
+                    with gr.Column(elem_classes=["scrollable-column"]):
+                        panel_display = gr.Markdown(label="面试流程规划")
+                    copy_panel_btn = gr.Button("复制流程规划")
+
                 status_text = gr.Textbox(label="处理状态", interactive=False)
     
     with gr.Tab("🎙️ 面试执行"):
@@ -325,6 +333,30 @@ with gr.Blocks(title="AI面试智能体", theme=gr.themes.Soft()) as demo:
         process_files_and_plan,
         inputs=[file_upload, jd_input, extra_requirements],
         outputs=[background_display, panel_display, status_text]
+    )
+    
+    copy_background_btn.click(
+        lambda x: x,
+        inputs=[background_display],
+        outputs=[gr.Textbox(visible=False)],  # Dummy output
+        js="""
+        (x) => {
+            navigator.clipboard.writeText(x);
+            alert("背景信息已复制到剪贴板");
+        }
+        """
+    )
+
+    copy_panel_btn.click(
+        lambda x: x,
+        inputs=[panel_display],
+        outputs=[gr.Textbox(visible=False)], # Dummy output
+        js="""
+        (x) => {
+            navigator.clipboard.writeText(x);
+            alert("面试流程已复制到剪贴板");
+        }
+        """
     )
     
     interview_panel["start_btn"].click(
